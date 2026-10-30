@@ -563,7 +563,7 @@
   </div>
 
   <!-- ======================================================== -->
-  <!-- 7. 核心 JavaScript (整合 5 大調整升級機制)                -->
+  <!-- 7. 核心 JavaScript                                       -->
   <!-- ======================================================== -->
   <script>
     window.switchAuthTab = function(tab) {
@@ -608,23 +608,21 @@
     let isVoiceEnabled = true;
     let uploadedImageBase64 = null;
 
-    // =============================================================
-    // [調整 1] 問題脈絡保存物件 (Inquiry Context)
-    // =============================================================
+    // 問題脈絡保存物件 (Inquiry Context)
     let inquiryContext = {
-      originalProblem: '',      // 原始提問
-      supplementaryInfo: [],   // 補充資訊（使用者陸續提供的細節）
-      categoryType: 'GENERAL', // 問題類別 (HIS / PRINTER / CARD / NETWORK / GENERAL)
-      matchedSop: null,        // 當前匹配之 SOP
-      suggestedSteps: [],      // 已建議過的排查步驟紀錄
-      userAttempts: [],        // 使用者嘗試與回覆歷程
-      deviceOrSystem: '',      // 識別出的設備或系統名稱
-      impactScope: '個人/單機', // 影響範圍 (個人 / 部門 / 多間診間 / 全院)
-      location: '',            // 位置/診間
-      errorCode: '',           // 錯誤訊息或代碼
-      unresolvedReason: '',    // 未排除原因
-      startTime: '',           // 發生時間
-      pendingProbeKey: null    // 當前等待使用者回答的主動追問欄位
+      originalProblem: '',
+      supplementaryInfo: [],
+      categoryType: 'GENERAL',
+      matchedSop: null,
+      suggestedSteps: [],
+      userAttempts: [],
+      deviceOrSystem: '',
+      impactScope: '個人/單機',
+      location: '',
+      errorCode: '',
+      unresolvedReason: '',
+      startTime: '',
+      pendingProbeKey: null
     };
 
     function resetInquiryContext() {
@@ -649,9 +647,7 @@
       updateTurnUI();
     }
 
-    // =============================================================
-    // [調整 3] 同義詞詞庫與強化比對引擎 (Synonym Matching)
-    // =============================================================
+    // 同義詞詞庫
     const SYNONYM_GROUPS = [
       { key: '健保卡', synonyms: ['健保卡', 'ic卡', '晶片卡', '醫事卡', '醫事人員卡', '卡片', '插卡'] },
       { key: '讀卡機', synonyms: ['讀卡機', '卡機', '讀卡器', '插卡槽', '讀不到卡', '刷卡機'] },
@@ -663,7 +659,6 @@
       { key: '密碼', synonyms: ['忘記密碼', '密碼過期', '帳號鎖定', '改密碼', '重設密碼', '無法登入', '登入失敗'] }
     ];
 
-    // 同義詞擴展：將使用者提問展開包含所有同義詞
     function expandSynonyms(text) {
       if (!text) return '';
       let expanded = text.toLowerCase();
@@ -676,7 +671,6 @@
       return expanded;
     }
 
-    // 智慧多維度比對 SOP
     function findBestSopMatches(queryText) {
       if (!queryText || !knowledgeBase || knowledgeBase.length === 0) return [];
       const expandedQ = expandSynonyms(queryText);
@@ -692,11 +686,9 @@
         const titleL = (k.title || '').toLowerCase();
         const sopIdL = (k.sop_id || '').toLowerCase();
 
-        // 1. 完全匹配標題或編號
         if (rawQ.includes(titleL) || titleL.includes(rawQ)) score += 30;
         if (rawQ.includes(sopIdL)) score += 50;
 
-        // 2. 關鍵字比對
         const kwList = Array.isArray(k.keywords) ? k.keywords : [k.keywords];
         kwList.forEach(w => {
           if (!w || !w.trim()) return;
@@ -710,20 +702,16 @@
           }
         });
 
-        // 3. 症狀比對
         const symptomL = (k.symptom || '').toLowerCase();
         if (symptomL && rawQ.includes(symptomL)) score += 15;
 
         return { item: k, score: score };
       });
 
-      // 依分數降冪排序，過濾出至少有基本關聯的候選
       return scored.filter(s => s.score >= 10).sort((a, b) => b.score - a.score);
     }
 
-    // =============================================================
-    // [調整 2] 主動追問引擎 (Proactive Probing)
-    // =============================================================
+    // 主動追問設定
     const CATEGORY_PROBES = {
       HIS_SYSTEM: [
         { key: 'function_screen', label: '發生功能畫面', prompt: '請問您是執行哪一個畫面或功能時發生異常（例如：門診看診開醫令、掛號批價、電子病歷）？' },
@@ -749,17 +737,14 @@
       ]
     };
 
-    // 從使用者的話語中自動提取脈絡與實體 (Slot Extraction)
     function extractSlotsFromUserMsg(text) {
       const lower = text.toLowerCase();
-      // 提取影響範圍
       if (lower.includes('大家都') || lower.includes('其他人也') || lower.includes('整個科室') || lower.includes('多間診間') || lower.includes('全部都')) {
         inquiryContext.impactScope = '多台 / 整個科室受影響';
       } else if (lower.includes('只有我') || lower.includes('就這台') || lower.includes('單獨一台')) {
         inquiryContext.impactScope = '單機 / 個人';
       }
 
-      // 提取設備或系統
       if (lower.includes('his') || lower.includes('門診系統') || lower.includes('醫令')) {
         inquiryContext.deviceOrSystem = inquiryContext.deviceOrSystem || 'HIS 醫療系統';
         inquiryContext.categoryType = 'HIS_SYSTEM';
@@ -774,20 +759,17 @@
         inquiryContext.categoryType = 'NETWORK';
       }
 
-      // 提取錯誤訊息代碼
       const errMatch = text.match(/([a-zA-Z0-9_\-]{4,15}|錯誤代碼\s*[:：]?\s*[a-zA-Z0-9]+)/);
       if (errMatch && !inquiryContext.errorCode) {
         inquiryContext.errorCode = errMatch[0];
       }
 
-      // 提取診間或位置
       const locMatch = text.match(/([0-9]+[fF樓]|第[0-9]+診|[0-9]+診間|[a-zA-Z0-9]+護理站|辦公室)/);
       if (locMatch && !inquiryContext.location) {
         inquiryContext.location = locMatch[0];
       }
     }
 
-    // 取得下一個需要主動追問的項目
     function getNextProbe(categoryType) {
       const probes = CATEGORY_PROBES[categoryType] || CATEGORY_PROBES.GENERAL;
       for (const p of probes) {
@@ -799,9 +781,6 @@
       return null;
     }
 
-    // =============================================================
-    // [調整 4 & 5] 對話流程、轉單條件判定與完整工單組裝
-    // =============================================================
     function initUserChat() {
       resetInquiryContext();
       document.getElementById('chatArea').innerHTML = '';
@@ -831,9 +810,8 @@
         box.className = "flex space-x-2 items-start";
         let actionArea = '';
 
-        // [調整 3] 歧義選項按鈕
         if (buttonType === 'disambiguate' && options.length > 0) {
-          const btns = options.map((opt, i) => `
+          const btns = options.map((opt) => `
             <button onclick="handleSelectDisambiguation('${opt.sop_id}')" class="w-full text-left p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-950 font-bold text-xs rounded border border-indigo-200 transition">
               👉 ${opt.title} <span class="text-[10px] font-normal text-slate-500">(${opt.category})</span>
             </button>
@@ -868,7 +846,6 @@
       area.scrollTop = area.scrollHeight;
     }
 
-    // 使用者送出訊息處理
     function handleUserSend() {
       const input = document.getElementById('userMsgInput');
       const q = input.value.trim();
@@ -879,7 +856,6 @@
       turnCount++;
       updateTurnUI();
 
-      // [調整 1] 保存脈絡
       if (!inquiryContext.originalProblem) {
         inquiryContext.originalProblem = q;
       } else {
@@ -887,10 +863,8 @@
       }
       inquiryContext.userAttempts.push(q);
 
-      // [調整 2] 從對話中擷取欄位資訊
       extractSlotsFromUserMsg(q);
 
-      // [調整 4] 檢查使用者言詞是否強烈指出硬體嚴重損壞或要求直接派修
       const isSevereHardware = (q.includes('冒煙') || q.includes('焦味') || q.includes('斷掉') || q.includes('摔壞') || q.includes('燒掉') || q.includes('直接派工') || q.includes('報修就好'));
       if (isSevereHardware) {
         inquiryContext.unresolvedReason = `硬體嚴重異常/現場要求直接派工：${q}`;
@@ -901,11 +875,9 @@
         return;
       }
 
-      // [調整 3] 比對 SOP 知識庫
       const matches = findBestSopMatches(q);
 
       setTimeout(() => {
-        // 多筆候選分數接近且皆很高 -> 彈出釐清選項
         if (matches.length >= 2 && matches[0].score >= 20 && (matches[0].score - matches[1].score <= 5)) {
           const topOptions = [matches[0].item, matches[1].item];
           if (matches[2] && matches[0].score - matches[2].score <= 8) topOptions.push(matches[2].item);
@@ -933,11 +905,9 @@
       speak("請您再多補充一些細節，我為您重新比對。");
     }
 
-    // 應用 SOP 指引並進行主動追問
     function applySopGuidance(sop) {
       inquiryContext.matchedSop = sop;
 
-      // 無匹配，或已達 5 輪上限 -> [調整 4] 轉單條件滿足
       if (turnCount >= MAX_TURNS || !sop) {
         const reason = turnCount >= MAX_TURNS ? "已排查達 5 輪上限" : "SOP 庫無匹配指引";
         inquiryContext.unresolvedReason = reason;
@@ -948,7 +918,6 @@
         return;
       }
 
-      // 不允許自解的項目 -> 直接轉單
       if (sop.allow_self_resolve === false) {
         inquiryContext.unresolvedReason = `SOP 規範此項目需由工程師到場或更換備品處置 (${sop.title})`;
         const directMsg = `【${sop.title}】依資訊規範需由工程師到場維護或更換備品。<br><br>💡 注意事項：${(sop.safe_steps || '').replace(/\n/g, '<br>')}<br><br>小威已為您填妥叫修單，請檢閱送出！`;
@@ -958,10 +927,8 @@
         return;
       }
 
-      // 記錄已建議步驟
       inquiryContext.suggestedSteps.push(sop.title);
 
-      // [調整 2] 檢查是否有未取得的必問資訊
       const nextProbe = getNextProbe(inquiryContext.categoryType);
       let probePromptText = '';
       if (nextProbe) {
@@ -988,9 +955,6 @@
       }
     }
 
-    // =============================================================
-    // [調整 5] 完整產出 Ticket (結構化帶入所有必備維護欄位)
-    // =============================================================
     function openTicketModalPreview() {
       const now = new Date();
       const sId = now.getFullYear().toString() + 
@@ -1008,23 +972,18 @@
       document.getElementById('m_email').innerText = currentUser.email;
       document.getElementById('m_call_time').innerText = inquiryContext.startTime || `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
 
-      // 地址欄位清空，避免帶入錯誤資訊
       document.getElementById('m_address').value = '';
 
-      // 位置欄位若有偵測到診間則自動帶入
       if (inquiryContext.location) {
         document.getElementById('m_location').value = inquiryContext.location;
       }
 
-      // 機型/系統
       const matchedTitle = inquiryContext.matchedSop ? inquiryContext.matchedSop.title : '';
       document.getElementById('m_model').value = inquiryContext.deviceOrSystem || matchedTitle || '一般主機/系統';
 
-      // 緊急度
       const urgencyVal = inquiryContext.matchedSop ? (inquiryContext.matchedSop.urgency || 'P2') : 'P2';
       document.getElementById('m_urgency_display').innerHTML = `<span class="px-2 py-0.5 ${urgencyVal === 'P1' ? 'bg-rose-100 text-rose-900' : 'bg-amber-100 text-amber-900'} font-bold rounded">${urgencyVal}</span>`;
 
-      // [調整 5] 組裝高規格、結構化之問題說明
       const suppText = inquiryContext.supplementaryInfo.length > 0 ? inquiryContext.supplementaryInfo.join('；') : '無額外補充';
       const stepsText = inquiryContext.suggestedSteps.length > 0 ? inquiryContext.suggestedSteps.map((s, idx) => `${idx + 1}. ${s}`).join('\n  ') : '無 (直接派單)';
       const failReason = inquiryContext.unresolvedReason || '嘗試排查指引後問題依舊';
@@ -1104,71 +1063,6 @@
       } finally {
         confirmBtn.innerText = "✅ 確認無誤，寫入 Supabase 建案";
         confirmBtn.disabled = false;
-      }
-    }
-
-    // -------------------------------------------------------------
-    // 後台 SOP 知識庫維護與匯入
-    // -------------------------------------------------------------
-    async function fetchKbFromSupabase() {
-      if (!supabaseClient) return;
-      try {
-        const { data, error } = await supabaseClient
-          .from('kb_solutions')
-          .select('*')
-          .order('sop_id', { ascending: true });
-
-        if (error) throw error;
-        knowledgeBase = data || [];
-        document.getElementById('kbCount').innerText = knowledgeBase.length;
-        renderKbList();
-      } catch (err) {
-        console.warn("讀取 kb_solutions 表失敗:", err);
-      }
-    }
-
-    function renderKbList() {
-      const c = document.getElementById('kbListContainer');
-      c.innerHTML = '';
-      if (!knowledgeBase || knowledgeBase.length === 0) {
-        c.innerHTML = '<div class="col-span-2 text-center text-slate-500 p-6">目前知識庫尚無資料，請點擊上方按鈕批次匯入</div>';
-        return;
-      }
-
-      knowledgeBase.forEach(k => {
-        const d = document.createElement('div');
-        d.className = "p-3 bg-slate-800 border border-slate-700 rounded-xl space-y-1.5 relative hover:border-slate-600 transition";
-        const kwStr = Array.isArray(k.keywords) ? k.keywords.join(', ') : k.keywords;
-        d.innerHTML = `
-          <div class="flex justify-between items-start gap-2">
-            <span class="font-bold text-sky-400 leading-snug">${k.sop_id ? `[${k.sop_id}] ` : ''}${k.title}</span>
-            <div class="flex items-center space-x-1 shrink-0">
-              <span class="text-[10px] bg-slate-700 px-1.5 py-0.5 rounded text-slate-300">${k.escalate_dept || '硬體維護組'}</span>
-              <button onclick="openEditSopModal('${k.sop_id}')" class="text-amber-400 hover:text-amber-300 text-xs px-1.5 py-0.5 bg-slate-700 hover:bg-slate-600 rounded" title="修改此筆 SOP">✏️ 修改</button>
-              <button onclick="deleteSopInSupabase('${k.sop_id}')" class="text-rose-400 hover:text-rose-300 text-xs px-1 py-0.5" title="刪除此筆">🗑️</button>
-            </div>
-          </div>
-          <p class="text-slate-300 text-[11px] whitespace-pre-line leading-relaxed bg-slate-900/60 p-2 rounded">${k.safe_steps || k.steps || '暫無步驟說明'}</p>
-          <div class="text-[10px] text-slate-400 flex justify-between items-center">
-            <span>關鍵字: ${kwStr}</span>
-            <span class="font-mono text-slate-500 text-[9px]">${k.category || ''}</span>
-          </div>
-        `;
-        c.appendChild(d);
-      });
-    }
-
-    async function deleteSopInSupabase(sopId) {
-      if (!confirm(`確定要刪除 [${sopId}] 嗎？`)) return;
-      try {
-        const { error } = await supabaseClient
-          .from('kb_solutions')
-          .delete()
-          .eq('sop_id', sopId);
-        if (error) throw error;
-        fetchKbFromSupabase();
-      } catch (err) {
-        alert("刪除失敗：" + err.message);
       }
     }
 
