@@ -27,22 +27,86 @@
       background-size: contain;
     }
 
-    @keyframes micPulse {
-      0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); }
-      70% { box-shadow: 0 0 0 12px rgba(239, 68, 68, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    /* 棕髮大眼黃帽T小男孩・小威專屬多姿態骨骼動畫庫 */
+    @keyframes boyIdleBreathe {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-5px); }
     }
-    .mic-listening {
-      animation: micPulse 1.4s infinite ease-out;
-      background-color: #ef4444 !important;
-      color: white !important;
+    @keyframes boyWalkPatrol {
+      0% { transform: translateX(0) scaleX(1); }
+      42% { transform: translateX(-80px) scaleX(1); }
+      48% { transform: translateX(-80px) scaleX(-1); }
+      92% { transform: translateX(10px) scaleX(-1); }
+      98% { transform: translateX(10px) scaleX(1); }
+      100% { transform: translateX(0) scaleX(1); }
+    }
+    @keyframes legWalkLeft {
+      0%, 100% { transform: rotate(0deg); }
+      50% { transform: rotate(-24deg) translateY(-2px); }
+    }
+    @keyframes legWalkRight {
+      0%, 100% { transform: rotate(0deg); }
+      50% { transform: rotate(24deg) translateY(-2px); }
+    }
+    @keyframes eyeBlinkNatural {
+      0%, 90%, 100% { transform: scaleY(1); }
+      95% { transform: scaleY(0.08); }
+    }
+    @keyframes armWaveMotion {
+      0%, 100% { transform: rotate(0deg); }
+      25% { transform: rotate(28deg); }
+      75% { transform: rotate(-16deg); }
+    }
+    @keyframes boyCheerJump {
+      0%, 100% { transform: translateY(0) scale(1); }
+      35% { transform: translateY(-24px) scale(1.06); }
+      65% { transform: translateY(-6px) scale(0.98); }
+    }
+    @keyframes headTiltThinking {
+      0%, 100% { transform: rotate(0deg); }
+      50% { transform: rotate(6deg); }
+    }
+
+    .boy-walker-stage {
+      animation: boyWalkPatrol 16s ease-in-out infinite;
+      transform-origin: bottom center;
+    }
+    .boy-walker-stage.paused {
+      animation-play-state: paused;
+    }
+    .boy-breathe-body {
+      animation: boyIdleBreathe 2.8s ease-in-out infinite;
+      transform-origin: bottom center;
+    }
+    .boy-eye-blink {
+      transform-origin: center;
+      animation: eyeBlinkNatural 4s infinite;
+    }
+    .boy-wave-r {
+      transform-origin: 122px 130px;
+      animation: armWaveMotion 1.5s ease-in-out infinite;
+    }
+    .boy-leg-l {
+      animation: legWalkLeft 0.8s ease-in-out infinite;
+      transform-origin: 64px 170px;
+    }
+    .boy-leg-r {
+      animation: legWalkRight 0.8s ease-in-out infinite;
+      transform-origin: 96px 170px;
+    }
+    .boy-cheer-jump {
+      animation: boyCheerJump 0.75s ease-in-out 3 !important;
+    }
+    .boy-head-tilt {
+      animation: headTiltThinking 2s ease-in-out infinite;
+      transform-origin: 80px 105px;
     }
   </style>
 </head>
 <body class="bg-slate-900 text-slate-100 h-screen w-screen flex flex-col overflow-hidden relative">
 
-  <!-- 頂部導覽列 -->
-  <header class="bg-[#10183d] border-b border-indigo-950 px-3.5 py-2.5 flex items-center justify-between shrink-0 shadow-md">
+  <!-- 頂部通用導覽列 -->
+  <header class="bg-[#10183d] border-b border-indigo-950 px-3.5 py-2 flex items-center justify-between shrink-0 shadow-md z-30">
     <div class="flex items-center space-x-2.5">
       <div class="bg-white px-2 py-1 rounded shadow-inner flex items-center justify-center">
         <img src="Welltake_Logo_light.png" alt="Welltake Logo" class="h-5 w-auto object-contain">
@@ -57,8 +121,11 @@
     </div>
 
     <div class="flex items-center space-x-1.5">
+      <button onclick="promptConfigureGroqKey()" class="text-[10px] bg-amber-900/80 hover:bg-amber-800 border border-amber-400/50 text-amber-200 px-2.5 py-0.5 rounded-full transition flex items-center gap-1">
+        <span>⚡</span> Groq AI 設定
+      </button>
       <span id="supabaseStatusBadge" class="text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-600/50 px-2 py-0.5 rounded-full">
-        ● Supabase SAGE 連線中
+        ● Supabase + Groq 連線中
       </span>
       <button id="changePwdBtn" onclick="openChangePasswordModal(false)" class="hidden px-2 py-1 bg-indigo-900/80 hover:bg-indigo-800 border border-indigo-400/40 rounded text-indigo-200 text-xs transition">
         🔑 變更密碼
@@ -177,29 +244,151 @@
       </div>
     </section>
 
-    <!-- 2. 使用者介面：小威智慧逐步引導排查 -->
-    <section id="userSection" class="hidden absolute inset-0 flex flex-col bg-white text-slate-800">
-      <div class="bg-indigo-900/10 border-b border-indigo-900/20 px-3 py-1.5 flex justify-between items-center text-xs">
+    <!-- 2. 使用者介面：交談視窗內走動的小男孩（小威）工作區 -->
+    <section id="userSection" class="hidden absolute inset-0 flex flex-col bg-white text-slate-800 overflow-hidden">
+      
+      <!-- 頂部排查狀態條 -->
+      <div class="bg-indigo-900/10 border-b border-indigo-900/20 px-3.5 py-1.5 flex justify-between items-center text-xs shrink-0 z-20">
         <span class="font-medium text-indigo-950 flex items-center gap-1.5">
-          💬 專屬 IT 智慧排查
+          💬 IT 智慧互動排查室
           <span id="turnCounterBadge" class="text-[10px] bg-[#10183d] text-white px-1.5 py-0.2 rounded font-mono">
             追問: 0/5 輪
           </span>
-          <span class="text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.2 rounded font-medium flex items-center gap-1">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            AI 智慧學習中
+          <span class="text-[10px] bg-amber-100 text-amber-950 border border-amber-300 px-1.5 py-0.2 rounded font-medium flex items-center gap-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+            Supabase + Groq LPU
           </span>
         </span>
-        <button onclick="toggleVoiceOutput()" id="voiceToggleBtn" class="text-[10px] bg-indigo-900 text-white px-2 py-0.5 rounded-full">
+        <button onclick="toggleVoiceOutput()" id="voiceToggleBtn" class="text-[10px] bg-indigo-900 text-white px-2.5 py-0.5 rounded-full shadow-sm">
           🔊 語音開
         </button>
       </div>
 
-      <!-- 對話串流區 -->
-      <div id="chatArea" class="flex-1 p-3.5 space-y-3.5 overflow-y-auto chat-bg no-scrollbar"></div>
+      <!-- 對話串流主區域 -->
+      <div class="flex-1 relative overflow-hidden flex flex-col">
+        <div id="chatArea" class="flex-1 p-3.5 space-y-3.5 overflow-y-auto chat-bg no-scrollbar z-0 pb-36"></div>
 
-      <!-- 輸入工具列 -->
-      <div class="bg-white border-t border-slate-200 px-3 pt-2 safe-bottom shrink-0 shadow-lg">
+        <!-- 小威動態互動台：在交談視窗內走動、肢體動作與表情變化 -->
+        <div id="xiaoweiWalkerStage" class="absolute bottom-1 right-2 sm:right-6 pointer-events-auto z-10 select-none flex flex-col items-center">
+          
+          <!-- 小威頭頂情緒微對話氣泡 -->
+          <div id="xiaoweiSpeechBubble" onclick="triggerXiaoweiCheer()" class="mb-1 bg-white/95 text-slate-800 border border-amber-300/80 px-2.5 py-1 rounded-xl shadow-md text-[11px] font-medium max-w-[210px] text-center cursor-pointer hover:scale-105 transition">
+            「我是小威！點我跟我互動喔！」
+          </div>
+
+          <!-- 小男孩實體走動容器 -->
+          <div class="boy-walker-stage cursor-pointer" id="boyWalkerEl" onclick="triggerXiaoweiCheer()" title="點點小威！">
+            <div id="boyBreatheEl" class="boy-breathe-body relative w-24 h-32 sm:w-28 sm:h-36">
+              
+              <svg viewBox="0 0 160 215" class="w-full h-full drop-shadow-xl" id="boyInteractiveSvg">
+                <!-- 腳底陰影 -->
+                <ellipse cx="80" cy="204" rx="34" ry="6" fill="#0f172a" opacity="0.25"/>
+
+                <!-- 左腿與球鞋 (走路步態動畫) -->
+                <g class="boy-leg-l">
+                  <rect x="62" y="152" width="10" height="34" rx="4" fill="#334155"/>
+                  <ellipse cx="66" cy="188" rx="9" ry="5.5" fill="#f8fafc"/>
+                  <path d="M57 188 Q66 182 75 188 L74 192 L58 192 Z" fill="#f97316"/>
+                </g>
+
+                <!-- 右腿與球鞋 (走路步態動畫) -->
+                <g class="boy-leg-r">
+                  <rect x="88" y="152" width="10" height="34" rx="4" fill="#334155"/>
+                  <ellipse cx="94" cy="188" rx="9" ry="5.5" fill="#f8fafc"/>
+                  <path d="M85 188 Q94 182 103 188 L102 192 L86 192 Z" fill="#f97316"/>
+                </g>
+
+                <!-- 亮黃色連帽拉鍊外套 -->
+                <path d="M42 120 L32 172 L128 172 L118 120 Z" fill="#f59e0b"/>
+                <!-- 內搭白T領口 -->
+                <path d="M68 118 L92 118 L80 138 Z" fill="#ffffff"/>
+                <!-- 拉鍊與金屬頭 -->
+                <path d="M80 138 L80 172" stroke="#b45309" stroke-width="2.5" stroke-linecap="round"/>
+                <rect x="78" y="136" width="4" height="6" rx="1.5" fill="#e2e8f0"/>
+                <!-- 連帽立體大翻領與陰影 -->
+                <path d="M42 120 Q80 144 118 120 Q108 106 80 112 Q52 106 42 120 Z" fill="#d97706"/>
+
+                <!-- 左手臂 -->
+                <g id="boyArmLeft">
+                  <path d="M42 122 Q28 140 36 154" stroke="#f59e0b" stroke-width="12" stroke-linecap="round" fill="none"/>
+                  <circle cx="36" cy="154" r="5.5" fill="#fed7aa"/>
+                </g>
+
+                <!-- 右手臂 (熱情揮手動態) -->
+                <g class="boy-wave-r" id="boyArmRight">
+                  <path d="M118 122 Q134 130 140 104" stroke="#f59e0b" stroke-width="12" stroke-linecap="round" fill="none"/>
+                  <circle cx="140" cy="102" r="6" fill="#fed7aa"/>
+                </g>
+
+                <!-- 脖子 -->
+                <rect x="72" y="92" width="16" height="18" rx="5" fill="#fed7aa"/>
+
+                <!-- 小男孩頭部群組 -->
+                <g class="boy-head-tilt">
+                  <circle cx="80" cy="70" r="37" fill="#fed7aa"/>
+                  <circle cx="41" cy="74" r="8.5" fill="#fed7aa"/>
+                  <circle cx="119" cy="74" r="8.5" fill="#fed7aa"/>
+                  <circle cx="41" cy="74" r="4.5" fill="#fca5a5" opacity="0.6"/>
+                  <circle cx="119" cy="74" r="4.5" fill="#fca5a5" opacity="0.6"/>
+
+                  <!-- 紅潤粉嫩腮紅 -->
+                  <ellipse cx="58" cy="80" rx="7.5" ry="4.2" fill="#fca5a5" opacity="0.85"/>
+                  <ellipse cx="102" cy="80" rx="7.5" ry="4.2" fill="#fca5a5" opacity="0.85"/>
+
+                  <!-- 表情 1：原圖驚奇大棕眼+張嘴 (surprised) -->
+                  <g id="expr-surprised" class="boy-eye-blink">
+                    <ellipse cx="64" cy="66" rx="9" ry="12" fill="#ffffff"/>
+                    <ellipse cx="65" cy="66" rx="6.5" ry="9.5" fill="#78350f"/>
+                    <circle cx="65" cy="66" r="4.5" fill="#451a03"/>
+                    <circle cx="67" cy="63" r="2.2" fill="#ffffff"/>
+                    <circle cx="63" cy="70" r="1.2" fill="#ffffff"/>
+                    <path d="M54 54 Q64 50 74 57" stroke="#451a03" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+
+                    <ellipse cx="96" cy="66" rx="9" ry="12" fill="#ffffff"/>
+                    <ellipse cx="95" cy="66" rx="6.5" ry="9.5" fill="#78350f"/>
+                    <circle cx="95" cy="66" r="4.5" fill="#451a03"/>
+                    <circle cx="97" cy="63" r="2.2" fill="#ffffff"/>
+                    <circle cx="93" cy="70" r="1.2" fill="#ffffff"/>
+                    <path d="M86 57 Q96 50 106 54" stroke="#451a03" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+
+                    <path d="M74 80 Q80 78 86 80 Q88 91 80 93 Q72 91 74 80 Z" fill="#451a03"/>
+                    <path d="M75 86 Q80 84 85 86 Q84 92 80 92 Q76 92 75 86 Z" fill="#ef4444"/>
+                  </g>
+
+                  <!-- 表情 2：開朗瞇瞇笑眼 (happy) -->
+                  <g id="expr-happy" style="display: none;">
+                    <path d="M55 66 Q65 57 75 66" stroke="#451a03" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+                    <path d="M85 66 Q95 57 105 66" stroke="#451a03" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+                    <path d="M72 80 Q80 90 88 80 Z" fill="#dc2626"/>
+                  </g>
+
+                  <!-- 表情 3：認真托腮思考 (thinking) -->
+                  <g id="expr-thinking" style="display: none;">
+                    <circle cx="65" cy="64" r="5.5" fill="#451a03"/>
+                    <circle cx="66" cy="62" r="2" fill="#ffffff"/>
+                    <circle cx="95" cy="64" r="5.5" fill="#451a03"/>
+                    <circle cx="96" cy="62" r="2" fill="#ffffff"/>
+                    <path d="M55 58 L72 60" stroke="#451a03" stroke-width="2.5" stroke-linecap="round"/>
+                    <path d="M88 60 L105 58" stroke="#451a03" stroke-width="2.5" stroke-linecap="round"/>
+                    <path d="M76 84 Q80 82 85 85" stroke="#451a03" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+                  </g>
+
+                  <circle cx="80" cy="72" r="2" fill="#d97706"/>
+                  <path d="M43 64 C33 38, 51 14, 80 14 C109 14, 127 38, 117 64 C111 54, 107 48, 97 46 C95 35, 84 31, 80 33 C76 31, 64 35, 62 46 C52 48, 48 54, 43 64 Z" fill="#854d0e"/>
+                  <path d="M80 16 Q88 4 79 3 Q74 10 79 16 Z" fill="#713f12"/>
+                  <path d="M49 52 Q61 46 73 50 Q80 42 87 50 Q99 46 111 52 Q105 38 80 36 Q55 38 49 52 Z" fill="#a16207"/>
+                </g>
+              </svg>
+
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- 底部輸入工具列 -->
+      <div class="bg-white border-t border-slate-200 px-3 pt-2 safe-bottom shrink-0 shadow-lg z-20">
         <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden" onchange="handleImageSelected(event)">
 
         <div id="voiceStatusBanner" class="hidden mb-2 p-2 bg-rose-50 border border-rose-200 rounded-lg flex items-center justify-between">
@@ -227,8 +416,9 @@
           </button>
 
           <div class="flex-1">
-            <input id="userMsgInput" type="text" placeholder="描述問題 (例如：不能開機、印表機卡紙、HIS當機)..."
+            <input id="userMsgInput" type="text" placeholder="告訴小威問題 (例：不能開機、印表機卡紙、HIS當機、什麼是DNS)..."
                    class="w-full bg-slate-100 text-slate-800 text-sm rounded-full px-3.5 py-2 border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+                   onfocus="handleInputFocused(true)" onblur="handleInputFocused(false)"
                    onkeypress="if(event.key==='Enter') handleUserSend()">
           </div>
 
@@ -239,6 +429,7 @@
           </button>
         </div>
       </div>
+
     </section>
 
     <!-- 3. 管理者 / 工程師 後台儀表板 -->
@@ -384,13 +575,10 @@
     </div>
   </div>
 
-  <!-- ======================================================== -->
-  <!-- 5. 全新簡潔報修表單確認 Modal (直接對接公司報修系統)        -->
-  <!-- ======================================================== -->
+  <!-- 5. 全新簡潔報修表單確認 Modal -->
   <div id="ticketModal" class="hidden absolute inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
     <div class="bg-white text-slate-900 w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden flex flex-col my-auto border border-slate-200">
       
-      <!-- 標頭 -->
       <div class="bg-[#10183d] text-white px-5 py-3.5 flex justify-between items-center shrink-0">
         <div class="flex items-center space-x-2">
           <span class="text-xl">🎫</span>
@@ -402,16 +590,12 @@
         <button onclick="closeTicketModal()" class="text-slate-400 hover:text-white text-base">✕</button>
       </div>
 
-      <!-- 表單內容 (簡潔 7 大欄位 + 排查摘要) -->
       <div class="p-5 overflow-y-auto flex-1 space-y-3.5 text-xs">
-        
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <!-- 1. 客戶公司名稱 -->
           <div>
             <label class="block font-bold text-slate-700 mb-1">客戶公司名稱</label>
             <input type="text" id="simple_company" readonly class="w-full bg-slate-100 border border-slate-300 rounded-lg px-3 py-2 text-slate-700 font-medium">
           </div>
-          <!-- 2. 管轄單位 / 院區 / 分公司 / 廠別 -->
           <div>
             <label class="block font-bold text-slate-700 mb-1">管轄單位 / 院區 / 分公司 / 廠別</label>
             <input type="text" id="simple_jurisdiction" readonly class="w-full bg-slate-100 border border-slate-300 rounded-lg px-3 py-2 text-indigo-900 font-bold">
@@ -419,17 +603,14 @@
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <!-- 3. 姓名 -->
           <div>
             <label class="block font-bold text-slate-700 mb-1">報修同仁姓名</label>
             <input type="text" id="simple_name" readonly class="w-full bg-slate-100 border border-slate-300 rounded-lg px-3 py-2 text-slate-700 font-medium">
           </div>
-          <!-- 4. 聯絡電話 -->
           <div>
             <label class="block font-bold text-slate-700 mb-1">聯絡電話 / 分機 <span class="text-rose-500">*</span></label>
             <input type="text" id="simple_phone" required class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-800 font-medium focus:outline-none focus:border-indigo-600">
           </div>
-          <!-- 5. 電子信箱 -->
           <div>
             <label class="block font-bold text-slate-700 mb-1">電子信箱 (Email)</label>
             <input type="email" id="simple_email" readonly class="w-full bg-slate-100 border border-slate-300 rounded-lg px-3 py-2 text-slate-700">
@@ -437,7 +618,6 @@
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <!-- 6. 報修時間 (自動代入當下時間) -->
           <div>
             <label class="block font-bold text-slate-700 mb-1">報修時間 (系統當前時間)</label>
             <div class="relative">
@@ -445,7 +625,6 @@
               <span class="absolute right-2.5 top-2 text-slate-400 text-xs">🕒</span>
             </div>
           </div>
-          <!-- 7. 所在位置 (使用者可填入詳細診間或樓層) -->
           <div>
             <label class="block font-bold text-slate-700 mb-1">所在位置 (樓層 / 診間 / 座位) <span class="text-rose-500">*</span></label>
             <input type="text" id="simple_location" required placeholder="例：3F 門診第 5 診間、資訊大樓 2F 辦公室" 
@@ -453,15 +632,12 @@
           </div>
         </div>
 
-        <!-- 8. 問題說明與小威排查歷程 -->
         <div>
           <label class="block font-bold text-slate-700 mb-1">報修問題描述與已測試排除紀錄</label>
           <textarea id="simple_problem" rows="4" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 leading-relaxed font-sans focus:outline-none"></textarea>
         </div>
-
       </div>
 
-      <!-- 操作按鈕 -->
       <div class="bg-slate-50 px-5 py-3 border-t border-slate-200 flex justify-end space-x-3 shrink-0">
         <button onclick="closeTicketModal()" class="px-4 py-2 border border-slate-300 text-slate-600 rounded-xl hover:bg-slate-200 text-xs font-medium transition">
           返回排查
@@ -545,15 +721,174 @@
     </div>
   </div>
 
-  <!-- 7. 核心 JavaScript (整合全新簡報修單、自動代入註冊資訊與當下時間) -->
+  <!-- 7. 核心 JavaScript (正宗小男生男童聲音 + Groq Cloud LPU 智能大腦) -->
   <script>
     // ==========================================
-    // A. 頂置全域語音宣告
+    // A. 內建核心 IT 基礎詞庫 (作為零延遲備援保障)
+    // ==========================================
+    const BUILTIN_IT_GLOSSARY = {
+      'dns': 'DNS（網域名稱系統，Domain Name System）就像是網路世界的「電話簿」。當我們在瀏覽器輸入好記的網址（例如 www.google.com 或院內系統網址）時，DNS 會在背景默默把它「翻譯」成電腦設備看得懂的數字 IP 位址（如 192.168.1.1），讓我們不必死背一長串數字就能順利連線開啟網站！',
+      'dhcp': 'DHCP（動態主機設定協定，Dynamic Host Configuration Protocol）就像是網路世界的「自動發號碼牌櫃台」。每台電腦、印表機或平板要連上網路，都需要一組專屬的 IP 門牌號碼。DHCP 伺服器會在設備連線瞬間自動指派一組可用的 IP 位址、子網路遮罩與閘道器，無須手動逐台設定！',
+      'vpn': 'VPN（虛擬私人網路，Virtual Private Network）就像是在公共網路上建造一條「專屬的加密安全隧道」。當同仁在院外、分公司或出差地點時，開啟 VPN 連線就能讓傳輸封包全程高規格加密，如同坐在辦公室內網一樣安全使用 HIS 醫療系統與檔案伺服器！',
+      'ip': 'IP（網際網路協定）位址就像是連網設備在網路世界中的「專屬門牌號碼」。每台電腦、醫療工作站或印表機都必須擁有唯一合法的 IP 位址，網路封包才能精準送達目的地。',
+      'his': 'HIS（醫療資訊系統，Hospital Information System）是醫院的數位神經中樞，整合掛號、門診醫令、電子病歷、檢驗檢查、藥局調劑、住院照護、批價計費到健保申報的所有流程，確保醫療數據即時互通。'
+    };
+
+    // ==========================================
+    // B. Groq Cloud LPU AI 核心連線模組 (Llama-3.3-70B，支援 CORS 代理)
+    // ==========================================
+    const DEFAULT_GROQ_API_KEY = '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';
+
+    window.getGroqApiKey = function() {
+      const stored = localStorage.getItem('welltake_groq_api_key');
+      if (stored && stored.trim().length > 0) return stored.trim();
+      return DEFAULT_GROQ_API_KEY;
+    };
+
+    window.promptConfigureGroqKey = function() {
+      const current = window.getGroqApiKey();
+      const input = prompt("【Groq Cloud AI 設定】\n如需替換金鑰，請輸入新的 API Key（預設已載入您的專屬 Key）：", current || '');
+      if (input !== null) {
+        localStorage.setItem('welltake_groq_api_key', input.trim());
+        alert("✅ Groq API Key 已成功儲存！");
+      }
+    };
+
+    async function callGroqAI(query, isDef = false) {
+      const apiKey = window.getGroqApiKey();
+      if (!apiKey) return null;
+
+      const systemPrompt = `你是一位熱心、專業、親切的企業與醫療 IT 維護小幫手「小威」，講話口吻活潑清脆、充滿耐心。
+使用者向你詢問了一個問題，請針對使用者的問題提供專業解答：
+
+【規範指示】：
+1. 繁體中文回答（台灣慣用 IT 與維護術語）。
+2. 若使用者詢問「名詞定義/概念」（例如「什麼是 DNS」、「DHCP 是什麼」）：
+   - 請用 2~3 段通俗生動的話解釋它的原理、核心功能與日常白話比喻。
+   - 不要包含多餘客套話，直接給予清楚有條理的解答。
+3. 若使用者描述的是「故障排除/問題排查」（例如設備異常、代碼報錯、軟體異常）：
+   - 請列出 3 至 4 個安全、具體、容易執行的排查測試步驟。
+   - 每個步驟務必獨立成行，並以「1. 」「2. 」「3. 」標註。
+4. 【嚴格禁止】：絕不要輸出任何外部網頁超連結或叫使用者去點外部網站，請直接在回答中給出排查解答。`;
+
+      const requestBody = {
+        model: "llama-3.3-70b-versatile",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: query }
+        ],
+        temperature: 0.35,
+        max_tokens: 800
+      };
+
+      // 雙通道請求：優先使用 CORS 代理通道，確保純前端 GitHub Pages 不受瀏覽器跨域限制阻擋
+      const candidateEndpoints = [
+        "https://corsproxy.io/?https://api.groq.com/openai/v1/chat/completions",
+        "https://api.groq.com/openai/v1/chat/completions"
+      ];
+
+      for (const endpoint of candidateEndpoints) {
+        try {
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${apiKey}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify(requestBody)
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            const text = data.choices?.[0]?.message?.content;
+            if (text && text.trim().length > 0) {
+              return text.trim();
+            }
+          }
+        } catch (e) {
+          console.warn("Groq 通道重試:", endpoint, e);
+        }
+      }
+
+      // 第三備援：若 Groq 網絡代理短暫抖動，調用無 CORS 阻擋的開源端點備援
+      try {
+        const fallbackRes = await fetch("https://text.pollinations.ai/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: query }
+            ],
+            model: "openai",
+            seed: 42
+          })
+        });
+        if (fallbackRes.ok) {
+          const text = await fallbackRes.text();
+          if (text && text.trim().length > 0) return text.trim();
+        }
+      } catch (e) {
+        console.warn("備援端點異常:", e);
+      }
+
+      return null;
+    }
+
+    // ==========================================
+    // C. 語音核心宣告：正宗「男童 / 青年男聲」音質（徹底過濾女聲）
     // ==========================================
     let isVoiceEnabled = true;
     let recognition = null;
     let isListening = false;
+    let availableVoices = [];
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    function loadVoices() {
+      if ('speechSynthesis' in window) {
+        availableVoices = window.speechSynthesis.getVoices();
+      }
+    }
+    if ('speechSynthesis' in window) {
+      loadVoices();
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
+    // 智能鎖定正宗男聲核心（堅決排除 HsiaoChen 曉臻、Yating 雅婷、Mei-Jia 美佳等女聲）
+    function pickBoyVoice() {
+      if (!availableVoices || availableVoices.length === 0) loadVoices();
+      
+      const isFemale = (name) => {
+        const lower = name.toLowerCase();
+        return lower.includes('hsiaochen') || lower.includes('yating') || 
+               lower.includes('mei-jia') || lower.includes('meijia') || 
+               lower.includes('hsiaoyu') || lower.includes('xiaoxiao') || 
+               lower.includes('xiaoyi') || lower.includes('female') || 
+               name.includes('女') || name.includes('曉臻') || 
+               name.includes('雅婷') || name.includes('美佳');
+      };
+
+      // 1. 優先尋找 Microsoft Yunxi（微軟官方正宗小男孩童聲音質）
+      const boyVoice = availableVoices.find(v => 
+        (v.name.includes('Yunxi') || v.name.includes('Kangkang') || v.name.includes('Danny')) && !isFemale(v.name)
+      );
+      if (boyVoice) return boyVoice;
+
+      // 2. 尋找微軟台灣男聲 Zhiwei（志偉）或含有 Male/男 的語音
+      const maleVoice = availableVoices.find(v => 
+        (v.lang === 'zh-TW' || v.lang.startsWith('zh')) &&
+        (v.name.includes('Zhiwei') || v.name.includes('Yunjian') || v.name.includes('Yunyang') || 
+         v.name.toLowerCase().includes('male') || v.name.includes('男')) &&
+        !isFemale(v.name)
+      );
+      if (maleVoice) return maleVoice;
+
+      // 3. 備選：任何標記為 Male 或非女性的中文聲音
+      const anyNonFemaleZh = availableVoices.find(v => v.lang.includes('zh') && !isFemale(v.name));
+      if (anyNonFemaleZh) return anyNonFemaleZh;
+
+      return null;
+    }
 
     window.speak = function(text, onComplete = null) {
       if (!isVoiceEnabled || !('speechSynthesis' in window)) {
@@ -562,10 +897,19 @@
       }
       try {
         window.speechSynthesis.cancel();
-        const cleanText = String(text || '').replace(/<[^>]*>/g, '').replace(/📷|💻|💡|✅|❌|📋|⚠️|👤|🤖|👉|🎫/g, '');
+        const cleanText = String(text || '').replace(/<[^>]*>/g, '').replace(/📷|💻|💡|✅|❌|📋|⚠️|👤|🤖|👉|🎫|✨|🔍|⚡/g, '');
         const utterance = new SpeechSynthesisUtterance(cleanText);
         utterance.lang = 'zh-TW';
-        utterance.rate = 1.05;
+        
+        // 正宗小男生少年音調（搭配男聲核心，1.22 即為純真、清脆的小男孩聲音）
+        utterance.pitch = 1.22; 
+        utterance.rate = 1.12;
+
+        const boyVoice = pickBoyVoice();
+        if (boyVoice) {
+          utterance.voice = boyVoice;
+        }
+
         utterance.onend = () => { if (onComplete) onComplete(); };
         utterance.onerror = () => { if (onComplete) onComplete(); };
         window.speechSynthesis.speak(utterance);
@@ -643,7 +987,78 @@
     };
 
     // ==========================================
-    // B. UI 與對話介面函式
+    // D. 小男孩走動、肢體動作與表情切換引擎
+    // ==========================================
+    window.setBoyExpression = function(exprName) {
+      const exprSurprised = document.getElementById('expr-surprised');
+      const exprHappy = document.getElementById('expr-happy');
+      const exprThinking = document.getElementById('expr-thinking');
+      if (!exprSurprised || !exprHappy || !exprThinking) return;
+
+      exprSurprised.style.display = 'none';
+      exprHappy.style.display = 'none';
+      exprThinking.style.display = 'none';
+
+      if (exprName === 'happy') {
+        exprHappy.style.display = 'block';
+      } else if (exprName === 'thinking') {
+        exprThinking.style.display = 'block';
+      } else {
+        exprSurprised.style.display = 'block';
+      }
+    };
+
+    window.updateXiaoweiMood = function(mood, customText = '') {
+      const bubbleEl = document.getElementById('xiaoweiSpeechBubble');
+      const walkerEl = document.getElementById('boyWalkerEl');
+      const breatheEl = document.getElementById('boyBreatheEl');
+      if (!bubbleEl) return;
+
+      if (mood === 'thinking') {
+        window.setBoyExpression('thinking');
+        if (walkerEl) walkerEl.classList.add('paused');
+        bubbleEl.innerText = customText || '「小威正在動動腦，幫您找出最快的測試排查法...」';
+      } else if (mood === 'step') {
+        window.setBoyExpression('surprised');
+        if (walkerEl) walkerEl.classList.remove('paused');
+        bubbleEl.innerText = customText || '「請試試這個步驟，完成後點下方按鈕跟我說喔！」';
+      } else if (mood === 'cheer') {
+        window.setBoyExpression('happy');
+        if (breatheEl) breatheEl.classList.add('boy-cheer-jump');
+        bubbleEl.innerText = customText || '「太棒了！順利解決問題，小威太開心啦！🎉」';
+        setTimeout(() => { 
+          if (breatheEl) breatheEl.classList.remove('boy-cheer-jump');
+          window.setBoyExpression('surprised');
+        }, 2200);
+      } else if (mood === 'ticket') {
+        window.setBoyExpression('thinking');
+        if (walkerEl) walkerEl.classList.add('paused');
+        bubbleEl.innerText = customText || '「別擔心，我已經把完整測試紀錄整理成報修單了！」';
+      } else {
+        window.setBoyExpression('surprised');
+        if (walkerEl) walkerEl.classList.remove('paused');
+        bubbleEl.innerText = customText || '「我是小威！請問您的設備遇到什麼狀況呢？」';
+      }
+    };
+
+    window.triggerXiaoweiCheer = function() {
+      window.updateXiaoweiMood('cheer', '「嘿嘿！有我在，電腦設備問題儘管交給我！」');
+      window.speak("嘿嘿！有我在，電腦設備問題儘管交給我！");
+    };
+
+    window.handleInputFocused = function(isFocused) {
+      const walkerEl = document.getElementById('boyWalkerEl');
+      if (!walkerEl) return;
+      if (isFocused) {
+        walkerEl.classList.add('paused');
+        window.setBoyExpression('surprised');
+      } else {
+        walkerEl.classList.remove('paused');
+      }
+    };
+
+    // ==========================================
+    // E. UI 介面切換與訊息氣泡
     // ==========================================
     window.updateTurnUI = function() {
       const badge = document.getElementById('turnCounterBadge');
@@ -717,7 +1132,7 @@
         box.className = "flex justify-end";
         box.innerHTML = `<div class="bg-[#10183d] text-white text-[13px] rounded-2xl rounded-tr-sm p-3 max-w-[85%] leading-relaxed shadow-sm">${text}</div>`;
       } else {
-        box.className = "flex space-x-2 items-start";
+        box.className = "flex space-x-2.5 items-start";
         let actionArea = '';
 
         if (buttonType === 'disambiguate' && options.length > 0) {
@@ -739,21 +1154,34 @@
         } else if (showButtons && buttonType === 'step_action') {
           actionArea = `
             <div class="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap gap-1.5">
-              <button onclick="handleStepResolved(true)" class="flex-1 min-w-[90px] py-1.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs font-bold rounded shadow-sm">
+              <button onclick="handleStepResolved(true)" class="flex-1 min-w-[90px] py-1.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs font-bold rounded shadow-sm transition">
                 ✅ 已排除解決
               </button>
-              <button onclick="handleStepResolved(false)" class="flex-1 min-w-[130px] py-1.5 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white text-xs font-bold rounded shadow-sm">
+              <button onclick="handleStepResolved(false)" class="flex-1 min-w-[130px] py-1.5 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white text-xs font-bold rounded shadow-sm transition">
                 ❌ 未排除，下一條測試
               </button>
-              <button onclick="openTicketModalPreview()" class="py-1.5 px-2 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs rounded">
+              <button onclick="openTicketModalPreview()" class="py-1.5 px-2 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs rounded transition">
                 🎫 直接報修
+              </button>
+            </div>
+          `;
+        } else if (showButtons && buttonType === 'definition_action') {
+          actionArea = `
+            <div class="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap gap-1.5">
+              <button onclick="handleStepResolved(true)" class="flex-1 min-w-[110px] py-1.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs font-bold rounded shadow-sm transition">
+                ✅ 已解答我的問題
+              </button>
+              <button onclick="openTicketModalPreview()" class="py-1.5 px-3 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs rounded transition">
+                🎫 仍有障礙，建立報修
               </button>
             </div>
           `;
         }
 
         box.innerHTML = `
-          <div class="w-7 h-7 rounded-full bg-[#10183d] text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 border border-indigo-200">威</div>
+          <div class="w-8 h-8 rounded-full overflow-hidden shrink-0 border border-amber-300 shadow-sm bg-amber-100 flex items-center justify-center">
+            <span class="text-sm">👦</span>
+          </div>
           <div class="bg-white/95 border border-slate-200 text-slate-800 text-[13px] rounded-2xl rounded-tl-sm p-3 max-w-[85%] shadow-sm leading-relaxed backdrop-blur-sm">
             ${text}${actionArea}
           </div>
@@ -764,7 +1192,7 @@
     };
 
     // ==========================================
-    // C. Supabase 初始化與狀態變數
+    // F. Supabase 初始化與狀態變數
     // ==========================================
     const SUPABASE_URL = 'https://tgvuxmlkbhnnjsyajjow.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_EE0J2uwbUorM9ywIXsbjdw_usVeipmc';
@@ -853,7 +1281,7 @@
     };
 
     // ==========================================
-    // D. 登入成功處理
+    // G. 登入成功處理 (精簡招呼語：「xxx 您好！我是小威。請問您的設備遇到什麼狀況呢？」)
     // ==========================================
     window.loginUserSuccess = function(user) {
       currentUser = user;
@@ -911,7 +1339,10 @@
         const chatArea = document.getElementById('chatArea');
         if (chatArea) chatArea.innerHTML = '';
 
-        const hello = `${currentUser.name} 您好！我是威策 IT 智慧助手小威。我已連線知識庫，將會一步一步引導您排查測試各類設備障礙。請問今天您的設備遇到什麼狀況呢？`;
+        // 【精簡招呼語】嚴格符合指示要求
+        const hello = `${currentUser.name} 您好！我是小威。請問您的設備遇到什麼狀況呢？`;
+        window.updateXiaoweiMood('idle', `「${hello}」`);
+
         window.appendUserChat('ai', hello);
         window.logChatToSupabase('ai', hello);
         if (typeof window.speak === 'function') {
@@ -1051,7 +1482,7 @@
     };
 
     // ==========================================
-    // E. 密碼複雜度驗證邏輯
+    // H. 密碼複雜度檢驗與修改
     // ==========================================
     function evaluatePasswordComplexity(pwd) {
       return {
@@ -1188,8 +1619,23 @@
     };
 
     // ==========================================
-    // F. 人性化語意正規化與同義互通
+    // I. 精準語意分析：意圖分流與停用詞過濾
     // ==========================================
+    function extractCoreIntent(text) {
+      if (!text) return '';
+      let clean = String(text).toLowerCase();
+      clean = clean.replace(/(什麼是|是什麼|什麼叫|請問|請教一下|想問|如何|怎麼|為啥|為什麼|有誰知道)/g, '');
+      clean = clean.replace(/[\s\-_，。！？\?]+/g, '').trim();
+      return clean;
+    }
+
+    function isDefinitionQuery(text) {
+      if (!text) return false;
+      const lower = String(text).toLowerCase().trim();
+      return /^(什麼是|何謂|什麼叫|請問什麼是)/.test(lower) || 
+             /(是什麼|是什麼意思|的定義|是幹嘛的|是做什麼的)$/.test(lower);
+    }
+
     function normalizeQuery(text) {
       if (!text) return '';
       let norm = String(text).toLowerCase();
@@ -1229,18 +1675,22 @@
     function calculateFuzzyScore(rawQuery, targetText) {
       if (!rawQuery || !targetText) return 0;
       let score = 0;
-      const q = rawQuery.replace(/[\s\-_，。！？]/g, '');
-      const t = targetText.replace(/[\s\-_，。！？]/g, '');
+      const cleanQ = extractCoreIntent(rawQuery);
+      const cleanT = extractCoreIntent(targetText);
+      if (cleanQ.length < 2 || cleanT.length < 2) return 0;
 
-      for (let i = 0; i < q.length - 1; i++) {
-        const bigram = q.substring(i, i + 2);
-        if (t.includes(bigram)) score += 6;
+      for (let i = 0; i < cleanQ.length - 1; i++) {
+        const bigram = cleanQ.substring(i, i + 2);
+        if (cleanT.includes(bigram)) score += 8;
       }
       return score;
     }
 
+    // 嚴格知識庫檢索：避免誤匹配
     function findBestSopMatches(queryText, sourceList = knowledgeBase) {
       if (!queryText || !sourceList || sourceList.length === 0) return [];
+      const isDef = isDefinitionQuery(queryText);
+      const coreQ = extractCoreIntent(queryText);
       const normQ = normalizeQuery(queryText);
       const expandedQ = expandSynonyms(queryText);
       const rawQ = String(queryText).toLowerCase().trim();
@@ -1254,11 +1704,22 @@
         let score = 0;
         const titleL = String(k.title || '').toLowerCase();
         const sopIdL = String(k.sop_id || '').toLowerCase();
+        const coreTitle = extractCoreIntent(titleL);
 
-        if (rawQ.includes(titleL) || titleL.includes(rawQ) || normQ.includes(titleL) || titleL.includes(normQ)) score += 35;
+        if (isDef) {
+          if (coreQ && (coreTitle === coreQ || coreTitle.includes(coreQ))) {
+            score += 45;
+          }
+          return { item: k, score: score };
+        }
+
+        if (coreQ && (coreTitle.includes(coreQ) || coreQ.includes(coreTitle))) {
+          score += 40;
+        }
+
         if (rawQ.includes(sopIdL)) score += 50;
 
-        score += calculateFuzzyScore(normQ, titleL);
+        score += calculateFuzzyScore(coreQ, coreTitle);
 
         let kwList = [];
         if (Array.isArray(k.keywords)) {
@@ -1272,26 +1733,22 @@
         kwList.forEach(w => {
           if (!w) return;
           const wL = String(w).trim().toLowerCase();
+          const coreW = extractCoreIntent(wL);
           if (!wL) return;
 
-          if (wL === rawQ || wL === normQ) {
-            score += 45;
-          } else if (rawQ.includes(wL) || normQ.includes(wL)) {
-            score += (wL.length >= 4 ? 22 : 12);
+          if (wL === rawQ || (coreQ && coreW === coreQ)) {
+            score += 50;
+          } else if (coreQ && (wL.includes(coreQ) || coreW.includes(coreQ))) {
+            score += (coreQ.length >= 3 ? 28 : 16);
           } else if (expandedQ.includes(wL)) {
-            score += 10;
-          } else {
-            score += calculateFuzzyScore(normQ, wL);
+            score += 12;
           }
         });
-
-        const symptomL = String(k.symptom || '').toLowerCase();
-        if (symptomL && (rawQ.includes(symptomL) || normQ.includes(symptomL))) score += 15;
 
         return { item: k, score: score };
       });
 
-      return scored.filter(s => s.score >= 12).sort((a, b) => b.score - a.score);
+      return scored.filter(s => s.score >= 25).sort((a, b) => b.score - a.score);
     }
 
     function parseStepsToArray(safeStepsText) {
@@ -1321,6 +1778,8 @@
 
     async function autoLearnNewKeywordToSupabase(sopId, newQuery) {
       if (!supabaseClient || !sopId || !newQuery) return;
+      if (isDefinitionQuery(newQuery)) return;
+
       const cleanKeyword = String(newQuery).trim();
       if (cleanKeyword.length < 2 || cleanKeyword.length > 30) return;
 
@@ -1340,15 +1799,33 @@
             .update({ keywords: currentKws })
             .eq('sop_id', sopId);
 
-          console.log(`🤖 [自主學習成功] 已將新問法「${cleanKeyword}」沉澱進 [${sopId}] 的關鍵字庫中！`);
+          console.log(`🤖 [自主學習] 已將新問法「${cleanKeyword}」沉澱進 [${sopId}] 的關鍵字庫中！`);
         }
       } catch (err) {
         console.warn("自主學習寫入異常:", err);
       }
     }
 
+    function parseGroqGeneratedSteps(rawText) {
+      if (!rawText) return [];
+      const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+      const parsed = [];
+
+      lines.forEach(l => {
+        if (/^[0-9]+[\.、\s\-]+/.test(l) || /^步驟\s*[0-9]+[:：\s]*/.test(l)) {
+          const clean = l.replace(/^[0-9]+[\.、\s\-]+/, '').replace(/^步驟\s*[0-9]+[:：\s]*/, '').trim();
+          if (clean.length > 4) parsed.push(clean);
+        }
+      });
+
+      if (parsed.length >= 2) return parsed;
+
+      const paragraphs = rawText.split(/\n\s*\n/).map(p => p.trim()).filter(p => p.length > 10);
+      return paragraphs.length > 0 ? paragraphs : [rawText];
+    }
+
     // ==========================================
-    // G. 對話發送與逐步測試流程
+    // J. 對話發送與逐步測試引導流程 (Groq Cloud AI 核心驅動)
     // ==========================================
     window.handleUserSend = async function() {
       const input = document.getElementById('userMsgInput');
@@ -1371,9 +1848,13 @@
 
       extractSlotsFromUserMsg(q);
 
+      window.updateXiaoweiMood('thinking', `「收到！小威正在為您動腦筋分析『${q}』...」`);
+
+      // 嚴重硬體故障直接建單
       const isSevereHardware = (q.includes('冒煙') || q.includes('焦味') || q.includes('斷掉') || q.includes('摔壞') || q.includes('燒掉') || q.includes('直接派工') || q.includes('報修就好'));
       if (isSevereHardware) {
         inquiryContext.unresolvedReason = `硬體嚴重異常/要求直接派修：${q}`;
+        window.updateXiaoweiMood('ticket', '「偵測到硬體嚴重狀況，小威直接幫您整理好報修單了！」');
         const urgentMsg = `收到！偵測到可能為硬體嚴重異常或零件損毀。小威已為您自動彙整並產生【報修確認表單】，請點擊下方確認送出建立案件！`;
         window.appendUserChat('ai', urgentMsg);
         window.logChatToSupabase('ai', urgentMsg);
@@ -1404,7 +1885,7 @@
       const matches = findBestSopMatches(q, activeSops);
 
       setTimeout(() => {
-        if (matches.length >= 2 && matches[0].score >= 20 && (matches[0].score - matches[1].score <= 5)) {
+        if (matches.length >= 2 && matches[0].score >= 25 && (matches[0].score - matches[1].score <= 6)) {
           const topOptions = [matches[0].item, matches[1].item];
           if (matches[2] && matches[0].score - matches[2].score <= 8) topOptions.push(matches[2].item);
           const clarifyMsg = '小威在知識庫中找到幾筆相似的排除指引，請問是哪一種情境？';
@@ -1434,46 +1915,134 @@
       const text = "使用者表示皆非預設的候選問題";
       inquiryContext.supplementaryInfo.push(text);
       window.logChatToSupabase('user', text);
-      const reply = '請您再多補充一些細節（例如設備型號、錯誤代碼或受影響範圍），小威為您重新連線 Supabase 檢索！';
+      const reply = '請您再多補充一些細節（例如設備型號、錯誤代碼或受影響範圍），小威為您重新連線檢索！';
       window.appendUserChat('ai', reply);
       window.logChatToSupabase('ai', reply);
       window.speak("請您再多補充一些細節，我為您重新比對。");
     };
 
-    function startStepByStepGuidance(sop) {
-      if (turnCount >= MAX_TURNS || !sop) {
-        const reason = turnCount >= MAX_TURNS ? "已排查達 5 輪上限" : "知識庫無直接相符條目";
-        inquiryContext.unresolvedReason = reason;
-        const msg = `小威評估此問題需要工程師現場/遠端協助處理 (${reason})。我已為您整理好【報修確認表單】，請檢閱送出建立案件：`;
-        window.appendUserChat('ai', msg, false);
-        window.logChatToSupabase('ai', msg);
-        window.speak(msg);
-        openTicketModalPreview();
+    // 啟動排查：內部 SOP 優先；查無資料時直接呼叫 Groq Cloud AI 生成解答
+    async function startStepByStepGuidance(sop) {
+      // 1. 內部知識庫有高信心相符 SOP
+      if (sop) {
+        if (sop.allow_self_resolve === false) {
+          inquiryContext.unresolvedReason = `SOP 規範此項目需由工程師到場處置 (${sop.title})`;
+          window.updateXiaoweiMood('ticket', '「此項目需由維護工程師到場檢修，已備妥工單！」');
+          const directMsg = `【${sop.title}】依資訊維護規範需由工程師到場維護或更換備品。<br><br>💡 注意事項：${(sop.safe_steps || '').replace(/\n/g, '<br>')}<br><br>小威已為您填妥報修案件，請檢閱確認！`;
+          window.appendUserChat('ai', directMsg, false);
+          window.logChatToSupabase('ai', directMsg);
+          window.speak("此問題需由工程師現場檢修，已為您準備好報修表單。");
+          openTicketModalPreview();
+          return;
+        }
+
+        autoLearnNewKeywordToSupabase(sop.sop_id, inquiryContext.originalProblem);
+        inquiryContext.matchedSop = sop;
+        const stepList = parseStepsToArray(sop.safe_steps || sop.steps);
+
+        activeGuidance = {
+          sop: sop,
+          steps: stepList,
+          currentStepIndex: 0
+        };
+
+        presentCurrentStep();
         return;
       }
 
-      if (sop.allow_self_resolve === false) {
-        inquiryContext.unresolvedReason = `SOP 規範此項目需由工程師到場或更換備品處置 (${sop.title})`;
-        const directMsg = `【${sop.title}】依資訊維護規範需由工程師到場維護或更換備品。<br><br>💡 注意事項：${(sop.safe_steps || '').replace(/\n/g, '<br>')}<br><br>小威已為您填妥報修案件，請檢閱送出！`;
-        window.appendUserChat('ai', directMsg, false);
-        window.logChatToSupabase('ai', directMsg);
-        window.speak("此問題需由工程師現場檢修，已為您準備好報修表單。");
-        openTicketModalPreview();
-        return;
+      // 2. 內部查無資料：直接連線 Groq Cloud AI (Llama-3.3-70B) 生成解答
+      const isDef = isDefinitionQuery(inquiryContext.originalProblem);
+      const coreWord = extractCoreIntent(inquiryContext.originalProblem).toLowerCase();
+      window.updateXiaoweiMood('thinking', '「內部知識庫無此專屬條目，小威正連線 Groq Cloud AI 智能分析...」');
+
+      let groqAnswer = await callGroqAI(inquiryContext.originalProblem, isDef);
+
+      // 若網路或跨域異常，但問題為常見名詞定義，優先啟用內建詞庫保障
+      if (!groqAnswer && isDef && BUILTIN_IT_GLOSSARY[coreWord]) {
+        groqAnswer = BUILTIN_IT_GLOSSARY[coreWord];
       }
 
-      autoLearnNewKeywordToSupabase(sop.sop_id, inquiryContext.originalProblem);
+      if (groqAnswer) {
+        if (isDef) {
+          // A. 名詞定義：在氣泡內直接呈現完整概念，附帶已解答確認按鈕
+          window.updateXiaoweiMood('step', '「小威找到完整名詞解讀囉！」');
 
-      inquiryContext.matchedSop = sop;
-      const stepList = parseStepsToArray(sop.safe_steps || sop.steps);
+          const defHtml = `
+            針對您的提問，小威透過 <b>Groq Cloud AI (Llama-3.3)</b> 為您整理出核心說明：<br><br>
+            <div class="bg-amber-50/90 p-3 rounded-xl border border-amber-300 text-slate-800 text-xs leading-relaxed my-1 shadow-sm">
+              <span class="font-bold text-amber-950 flex items-center gap-1 mb-1">
+                <span>⚡</span> AI 智能知識解答
+              </span>
+              ${groqAnswer.replace(/\n/g, '<br>')}
+            </div><br>
+            請問上述說明是否已解答您的疑問？
+          `;
 
-      activeGuidance = {
-        sop: sop,
-        steps: stepList,
-        currentStepIndex: 0
-      };
+          inquiryContext.suggestedSteps.push(`[Groq AI 名詞解答]: ${groqAnswer.substring(0, 35)}...`);
+          window.appendUserChat('ai', defHtml, true, 'definition_action');
+          window.logChatToSupabase('ai', `Groq AI 解答: ${groqAnswer}`);
+          window.speak("已為您產生解答說明，請問是否已解決您的疑問？");
+        } else {
+          // B. 故障排除：將 Groq 生成的 1. 2. 3. 步驟納入小威逐條測試引擎
+          window.updateXiaoweiMood('step', '「小威已為您規劃專屬排查步驟，我們一步一步測試！」');
 
-      presentCurrentStep();
+          const dynamicSteps = parseGroqGeneratedSteps(groqAnswer);
+          inquiryContext.matchedSop = {
+            sop_id: 'AI-DYNAMIC',
+            title: `AI 智能排查：${inquiryContext.originalProblem}`,
+            urgency: 'P2',
+            allow_self_resolve: true
+          };
+
+          activeGuidance = {
+            sop: inquiryContext.matchedSop,
+            steps: dynamicSteps,
+            currentStepIndex: 0
+          };
+
+          const introMsg = `內部資料庫暫無專屬 SOP，小威透過 <b>Groq Cloud AI</b> 為您規劃了 <b>${dynamicSteps.length} 項測試步驟</b>，我們一步一步排查看看：`;
+          window.appendUserChat('ai', introMsg);
+
+          setTimeout(() => {
+            presentCurrentStep();
+          }, 350);
+        }
+      } else {
+        // C. 若純故障排查且無 AI 可用，才啟動通用硬體排查
+        if (isDef) {
+          window.updateXiaoweiMood('step', '「小威暫時查無此名詞定義，請問是否有具體設備故障？」');
+          const noDefMsg = `小威在目前資料庫中暫無「${inquiryContext.originalProblem}」的定義紀錄。請問您目前是否有遇到具體的電腦、印表機或系統操作障礙需要我協助排查呢？`;
+          window.appendUserChat('ai', noDefMsg, false);
+          return;
+        }
+
+        window.updateXiaoweiMood('step', '「小威為您啟動標準通用急救排查！」');
+
+        const defaultSteps = [
+          "將設備完全關機並拔除電源線（筆電請拔充電線），靜置 20 秒放電後重新接回開機測試。",
+          "檢查設備後方訊號線路（網路線 / 螢幕連接線 / 讀卡機 USB 線）兩端是否重新插緊。",
+          "若是應用程式或特定網頁異常，請嘗試重新啟動該軟體或重新開機。"
+        ];
+
+        inquiryContext.matchedSop = {
+          sop_id: 'EMERGENCY-GEN',
+          title: '通用硬體與系統急救排查',
+          urgency: 'P2',
+          allow_self_resolve: true
+        };
+
+        activeGuidance = {
+          sop: inquiryContext.matchedSop,
+          steps: defaultSteps,
+          currentStepIndex: 0
+        };
+
+        const emergencyNotice = `小威為您直接引導進行<b>【通用急救測試】</b>：`;
+        window.appendUserChat('ai', emergencyNotice);
+        setTimeout(() => {
+          presentCurrentStep();
+        }, 400);
+      }
     }
 
     function presentCurrentStep() {
@@ -1483,7 +2052,9 @@
 
       inquiryContext.suggestedSteps.push(`[${sop.title}] 步驟 ${currentStepIndex + 1}: ${stepContent}`);
 
-      const stepPrompt = `針對【${sop.title}】，小威引導您逐步測試：<br><br>👉 <b>測試步驟 (${currentStepIndex + 1}/${total})</b>：<br><span class="text-indigo-950 font-bold bg-amber-50 p-1.5 rounded border border-amber-200 block my-1">${stepContent}</span><br>請問您照著完成此步驟後，問題是否已解決？`;
+      window.updateXiaoweiMood('step', `「請測試第 ${currentStepIndex + 1}/${total} 步：${stepContent.substring(0, 18)}...」`);
+
+      const stepPrompt = `針對【${sop.title}】，小威引導您逐步測試：<br><br>👉 <b>測試步驟 (${currentStepIndex + 1}/${total})</b>：<br><span class="text-indigo-950 font-bold bg-amber-50 p-2 rounded-lg border border-amber-300 block my-1 leading-relaxed">${stepContent}</span><br>請問您照著完成此步驟後，問題是否已解決？`;
 
       window.appendUserChat('ai', stepPrompt, true, 'step_action');
       window.logChatToSupabase('ai', `測試步驟 (${currentStepIndex + 1}/${total})：${stepContent}`);
@@ -1493,12 +2064,13 @@
     window.handleStepResolved = function(isResolved) {
       if (isResolved) {
         const stepNum = activeGuidance.currentStepIndex + 1;
-        const msg = `太棒了！很高興在步驟 (${stepNum}) 順利為您排除障礙 🎉 本次諮詢對話歷程已歸檔，祝您工作順心！`;
+        window.updateXiaoweiMood('cheer', `「太棒了！順利排除障礙，小威太開心啦！🎉」`);
+        const msg = `太棒了！很高興順利為您排除障礙 🎉 本次諮詢對話歷程已完整歸檔，祝您工作順心！`;
         window.appendUserChat('ai', msg);
         window.logChatToSupabase('ai', msg);
         window.speak(msg);
 
-        if (activeGuidance.sop) {
+        if (activeGuidance.sop && activeGuidance.sop.sop_id !== 'AI-DYNAMIC' && activeGuidance.sop.sop_id !== 'EMERGENCY-GEN') {
           autoLearnNewKeywordToSupabase(activeGuidance.sop.sop_id, inquiryContext.originalProblem);
         }
         activeGuidance = { sop: null, steps: [], currentStepIndex: 0 };
@@ -1514,7 +2086,8 @@
           }, 350);
         } else {
           inquiryContext.unresolvedReason = `已依序執行全部 ${activeGuidance.steps.length} 項排查步驟均未能排除故障`;
-          const allExhaustedMsg = `針對此問題的所有標準排查步驟均已嘗試完畢，仍無法恢復正常。小威已自動將所有測試歷程完整彙整至【報修確認表單】，請點擊下方預覽確認送出！`;
+          window.updateXiaoweiMood('ticket', '「所有步驟均已試畢，小威已為您填妥報修單！」');
+          const allExhaustedMsg = `針對此問題的所有排查步驟均已嘗試完畢，仍無法恢復正常。小威已自動將所有測試歷程完整彙整至【報修確認表單】，請點擊下方預覽確認送出！`;
           window.appendUserChat('ai', allExhaustedMsg, false);
           window.logChatToSupabase('ai', allExhaustedMsg);
           window.speak("所有測試步驟均已嘗試完畢，正為您產出報修案件。");
@@ -1559,29 +2132,20 @@
     }
 
     // ==========================================
-    // H. 【全新改版】：簡易報修確認表單控制 (對接報修系統)
+    // K. 報修確認表單控制
     // ==========================================
     function openTicketModalPreview() {
       const now = new Date();
-      // 生成當前精準時間：YYYY-MM-DD HH:mm:ss
       const currentTimeStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
 
-      // 1. 自動代入公司名稱
       document.getElementById('simple_company').value = currentUser.company || '威策電腦';
-      // 2. 自動代入管轄單位 / 院區 / 分公司 / 廠別
       document.getElementById('simple_jurisdiction').value = currentUser.jurisdiction || currentUser.dept || '全院/總公司';
-      // 3. 自動代入姓名
       document.getElementById('simple_name').value = currentUser.name || '';
-      // 4. 自動代入聯絡電話
       document.getElementById('simple_phone').value = currentUser.phone || '';
-      // 5. 自動代入 Email
       document.getElementById('simple_email').value = currentUser.email || '';
-      // 6. 自動代入當下報修時間
       document.getElementById('simple_call_time').value = currentTimeStr;
-      // 7. 自動代入或提供輸入所在位置
       document.getElementById('simple_location').value = inquiryContext.location || '';
 
-      // 組裝問題與排除歷程摘要
       const suppText = inquiryContext.supplementaryInfo.length > 0 ? inquiryContext.supplementaryInfo.join('；') : '無額外補充';
       const stepsText = inquiryContext.suggestedSteps.length > 0 ? inquiryContext.suggestedSteps.map((s, idx) => `  ${idx + 1}. ${s}`).join('\n') : '  未執行排查 (直接報修)';
       const failReason = inquiryContext.unresolvedReason || '依序嘗試排查測試後問題仍未解決';
@@ -1678,7 +2242,6 @@ ${stepsText}
         window.logChatToSupabase('ai', `報修案件建立完成：${ticketPayload.service_id} (位置: ${ticketPayload.location})`);
         window.speak("報修案件已成功建立，工程師已接收通知，將儘速聯絡您！");
         
-        // 刷新後台報修案件清單
         if (typeof window.fetchTicketsFromSupabase === 'function') {
           window.fetchTicketsFromSupabase();
         }
@@ -1694,7 +2257,7 @@ ${stepsText}
     };
 
     // ==========================================
-    // I. 後台管理與資料表讀取
+    // L. 註冊、後台管理與資料表讀取
     // ==========================================
     window.handleRegisterSubmit = async function(e) {
       e.preventDefault();
@@ -1842,7 +2405,7 @@ ${stepsText}
         if (kbBadge) kbBadge.innerText = knowledgeBase.length;
         const statusBadge = document.getElementById('supabaseStatusBadge');
         if (statusBadge) {
-          statusBadge.innerText = `● Supabase SAGE (知識庫: ${knowledgeBase.length} 筆)`;
+          statusBadge.innerText = `● Supabase + Groq (SOP: ${knowledgeBase.length} 筆)`;
         }
         renderKbList();
       } catch (err) {
@@ -2154,7 +2717,6 @@ ${stepsText}
       }
     };
 
-    // 讀取獨立的 tickets 報修案件表單 (支援全新簡化欄位呈顯)
     window.fetchTicketsFromSupabase = async function() {
       if (!supabaseClient) return;
       const c = document.getElementById('ticketsLogContainer');
@@ -2207,7 +2769,6 @@ ${stepsText}
       }
     };
 
-    // 讀取獨立的 chat_logs 對話歷程
     window.fetchChatLogsFromSupabase = async function() {
       if (!supabaseClient) return;
       const c = document.getElementById('chatLogsContainer');
@@ -2254,8 +2815,8 @@ ${stepsText}
 
           item.innerHTML = `
             <div class="flex justify-between items-center mb-1 text-[10px] text-slate-400">
-              <span class="font-bold ${isUser ? 'text-sky-300' : 'text-emerald-400'}">
-                ${isUser ? '👤 使用者' : '🤖 小威 AI'}: ${log.user_name || '訪客'} (${log.company || ''} ${log.jurisdiction || ''})
+              <span class="font-bold ${isUser ? 'text-sky-300' : 'text-amber-400'}">
+                ${isUser ? '👤 使用者' : '👦 小威'}: ${log.user_name || '訪客'} (${log.company || ''} ${log.jurisdiction || ''})
               </span>
               <span class="font-mono">${new Date(log.created_at).toLocaleString()}</span>
             </div>
@@ -2299,6 +2860,8 @@ ${stepsText}
         window.logChatToSupabase('user', '[上傳了現場障礙照片]', true);
         turnCount++;
         window.updateTurnUI();
+
+        window.updateXiaoweiMood('step', '「小威收到現場照片囉，正幫您確認畫面與燈號！」');
 
         setTimeout(() => {
           const aiAnalysisText = "小威已接收到您上傳的設備照片！系統初步診斷顯示燈號或螢幕畫面有異常狀況。建議先確認後方連接線路是否牢固；若持續無法使用，請點選下方按鈕直接為您送出報修單！";
