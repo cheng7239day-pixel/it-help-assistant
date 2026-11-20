@@ -27,6 +27,7 @@
       background-size: contain;
     }
 
+    /* 棕髮大眼黃帽T小男孩・小威專屬多姿態骨骼動畫庫 */
     @keyframes boyIdleBreathe {
       0%, 100% { transform: translateY(0); }
       50% { transform: translateY(-5px); }
@@ -125,11 +126,11 @@
     </div>
 
     <div class="flex items-center space-x-1.5">
-      <button onclick="promptGroqKeyModal()" id="edgeGatewayBadge" class="text-[9px] bg-indigo-900/90 hover:bg-indigo-800 text-sky-200 border border-indigo-400/50 px-2 py-0.5 rounded-full flex items-center gap-1 cursor-pointer transition" title="點擊設定或查看 Groq Key">
-        <span>⚡</span> Groq 分析引擎
-      </button>
+      <span id="edgeGatewayBadge" class="text-[9px] bg-indigo-900/90 text-sky-200 border border-indigo-400/50 px-2 py-0.5 rounded-full flex items-center gap-1">
+        <span>⚡</span> RAG + Groq AI
+      </span>
       <span id="supabaseStatusBadge" class="text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-600/50 px-2 py-0.5 rounded-full">
-        ● Supabase 連線中
+        ● Supabase RAG 連線中
       </span>
       <button id="changePwdBtn" onclick="openChangePasswordModal(false)" class="hidden px-2 py-1 bg-indigo-900/80 hover:bg-indigo-800 border border-indigo-400/40 rounded text-indigo-200 text-xs transition">
         🔑 變更密碼
@@ -160,6 +161,7 @@
           </button>
         </div>
 
+        <!-- 登入表單 -->
         <div id="loginForm" class="space-y-3 text-xs" style="display: block;">
           <div>
             <label class="block font-medium mb-1">電子信箱 / 帳號 <span class="text-rose-500">*</span></label>
@@ -177,6 +179,7 @@
           </button>
         </div>
 
+        <!-- 註冊表單 -->
         <form id="registerForm" onsubmit="handleRegisterSubmit(event)" class="space-y-2.5 text-xs" style="display: none;">
           <div>
             <label class="block font-medium text-slate-700 mb-1">客戶公司名稱 <span class="text-rose-500">*</span></label>
@@ -249,6 +252,7 @@
     <!-- 2. 使用者介面：交談視窗內走動的小男孩（小威）工作區 -->
     <section id="userSection" class="hidden absolute inset-0 flex flex-col bg-white text-slate-800 overflow-hidden">
       
+      <!-- 頂部排查狀態條 -->
       <div class="bg-indigo-900/10 border-b border-indigo-900/20 px-3.5 py-1.5 flex justify-between items-center text-xs shrink-0 z-20">
         <span class="font-medium text-indigo-950 flex items-center gap-1.5">
           💬 IT 智慧互動排查室
@@ -257,7 +261,7 @@
           </span>
           <span id="ragGuardBadge" class="text-[10px] bg-amber-100 text-amber-950 border border-amber-300 px-1.5 py-0.2 rounded font-medium flex items-center gap-1">
             <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-            SOP + Groq 智能排查
+            SOP + Groq 智能推理
           </span>
         </span>
         <div class="flex items-center gap-1.5">
@@ -270,50 +274,78 @@
         </div>
       </div>
 
+      <!-- 對話串流主區域 -->
       <div class="flex-1 relative overflow-hidden flex flex-col">
         <div id="chatArea" class="flex-1 p-3.5 space-y-3.5 overflow-y-auto chat-bg no-scrollbar z-0 pb-36"></div>
 
+        <!-- 小威動態互動台：在交談視窗內走動、肢體動作與表情變化 -->
         <div id="xiaoweiWalkerStage" class="absolute bottom-1 right-2 sm:right-6 pointer-events-auto z-10 select-none flex flex-col items-center">
+          
+          <!-- 小威頭頂情緒微對話氣泡 -->
           <div id="xiaoweiSpeechBubble" onclick="triggerXiaoweiCheer()" class="mb-1 bg-white/95 text-slate-800 border border-amber-300/80 px-2.5 py-1 rounded-xl shadow-md text-[11px] font-medium max-w-[210px] text-center cursor-pointer hover:scale-105 transition">
             「我是小威！點我跟我互動喔！」
           </div>
 
+          <!-- 小男孩實體走動容器 -->
           <div class="boy-walker-stage cursor-pointer" id="boyWalkerEl" onclick="triggerXiaoweiCheer()" title="點點小威！">
             <div id="boyBreatheEl" class="boy-breathe-body relative w-24 h-32 sm:w-28 sm:h-36">
+              
               <svg viewBox="0 0 160 215" class="w-full h-full drop-shadow-xl" id="boyInteractiveSvg">
+                <!-- 腳底陰影 -->
                 <ellipse cx="80" cy="204" rx="34" ry="6" fill="#0f172a" opacity="0.25"/>
+
+                <!-- 左腿與球鞋 (走路步態動畫) -->
                 <g class="boy-leg-l">
                   <rect x="62" y="152" width="10" height="34" rx="4" fill="#334155"/>
                   <ellipse cx="66" cy="188" rx="9" ry="5.5" fill="#f8fafc"/>
                   <path d="M57 188 Q66 182 75 188 L74 192 L58 192 Z" fill="#f97316"/>
                 </g>
+
+                <!-- 右腿與球鞋 (走路步態動畫) -->
                 <g class="boy-leg-r">
                   <rect x="88" y="152" width="10" height="34" rx="4" fill="#334155"/>
                   <ellipse cx="94" cy="188" rx="9" ry="5.5" fill="#f8fafc"/>
                   <path d="M85 188 Q94 182 103 188 L102 192 L86 192 Z" fill="#f97316"/>
                 </g>
+
+                <!-- 亮黃色連帽拉鍊外套 -->
                 <path d="M42 120 L32 172 L128 172 L118 120 Z" fill="#f59e0b"/>
+                <!-- 內搭白T領口 -->
                 <path d="M68 118 L92 118 L80 138 Z" fill="#ffffff"/>
+                <!-- 拉鍊與金屬頭 -->
                 <path d="M80 138 L80 172" stroke="#b45309" stroke-width="2.5" stroke-linecap="round"/>
                 <rect x="78" y="136" width="4" height="6" rx="1.5" fill="#e2e8f0"/>
+                <!-- 連帽立體大翻領與陰影 -->
                 <path d="M42 120 Q80 144 118 120 Q108 106 80 112 Q52 106 42 120 Z" fill="#d97706"/>
+
+                <!-- 左手臂 -->
                 <g id="boyArmLeft">
                   <path d="M42 122 Q28 140 36 154" stroke="#f59e0b" stroke-width="12" stroke-linecap="round" fill="none"/>
                   <circle cx="36" cy="154" r="5.5" fill="#fed7aa"/>
                 </g>
+
+                <!-- 右手臂 (熱情揮手動態) -->
                 <g class="boy-wave-r" id="boyArmRight">
                   <path d="M118 122 Q134 130 140 104" stroke="#f59e0b" stroke-width="12" stroke-linecap="round" fill="none"/>
                   <circle cx="140" cy="102" r="6" fill="#fed7aa"/>
                 </g>
+
+                <!-- 脖子 -->
                 <rect x="72" y="92" width="16" height="18" rx="5" fill="#fed7aa"/>
+
+                <!-- 小男孩頭部群組 -->
                 <g class="boy-head-tilt">
                   <circle cx="80" cy="70" r="37" fill="#fed7aa"/>
                   <circle cx="41" cy="74" r="8.5" fill="#fed7aa"/>
                   <circle cx="119" cy="74" r="8.5" fill="#fed7aa"/>
                   <circle cx="41" cy="74" r="4.5" fill="#fca5a5" opacity="0.6"/>
                   <circle cx="119" cy="74" r="4.5" fill="#fca5a5" opacity="0.6"/>
+
+                  <!-- 紅潤粉嫩腮紅 -->
                   <ellipse cx="58" cy="80" rx="7.5" ry="4.2" fill="#fca5a5" opacity="0.85"/>
                   <ellipse cx="102" cy="80" rx="7.5" ry="4.2" fill="#fca5a5" opacity="0.85"/>
+
+                  <!-- 表情 1：原圖驚奇大棕眼+張嘴 (surprised) -->
                   <g id="expr-surprised" class="boy-eye-blink">
                     <ellipse cx="64" cy="66" rx="9" ry="12" fill="#ffffff"/>
                     <ellipse cx="65" cy="66" rx="6.5" ry="9.5" fill="#78350f"/>
@@ -321,20 +353,26 @@
                     <circle cx="67" cy="63" r="2.2" fill="#ffffff"/>
                     <circle cx="63" cy="70" r="1.2" fill="#ffffff"/>
                     <path d="M54 54 Q64 50 74 57" stroke="#451a03" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+
                     <ellipse cx="96" cy="66" rx="9" ry="12" fill="#ffffff"/>
                     <ellipse cx="95" cy="66" rx="6.5" ry="9.5" fill="#78350f"/>
                     <circle cx="95" cy="66" r="4.5" fill="#451a03"/>
                     <circle cx="97" cy="63" r="2.2" fill="#ffffff"/>
                     <circle cx="93" cy="70" r="1.2" fill="#ffffff"/>
                     <path d="M86 57 Q96 50 106 54" stroke="#451a03" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+
                     <path d="M74 80 Q80 78 86 80 Q88 91 80 93 Q72 91 74 80 Z" fill="#451a03"/>
                     <path d="M75 86 Q80 84 85 86 Q84 92 80 92 Q76 92 75 86 Z" fill="#ef4444"/>
                   </g>
+
+                  <!-- 表情 2：開朗瞇瞇笑眼 (happy) -->
                   <g id="expr-happy" style="display: none;">
                     <path d="M55 66 Q65 57 75 66" stroke="#451a03" stroke-width="3.5" fill="none" stroke-linecap="round"/>
                     <path d="M85 66 Q95 57 105 66" stroke="#451a03" stroke-width="3.5" fill="none" stroke-linecap="round"/>
                     <path d="M72 80 Q80 90 88 80 Z" fill="#dc2626"/>
                   </g>
+
+                  <!-- 表情 3：認真托腮思考 (thinking) -->
                   <g id="expr-thinking" style="display: none;">
                     <circle cx="65" cy="64" r="5.5" fill="#451a03"/>
                     <circle cx="66" cy="62" r="2" fill="#ffffff"/>
@@ -344,15 +382,19 @@
                     <path d="M88 60 L105 58" stroke="#451a03" stroke-width="2.5" stroke-linecap="round"/>
                     <path d="M76 84 Q80 82 85 85" stroke="#451a03" stroke-width="2.5" fill="none" stroke-linecap="round"/>
                   </g>
+
                   <circle cx="80" cy="72" r="2" fill="#d97706"/>
                   <path d="M43 64 C33 38, 51 14, 80 14 C109 14, 127 38, 117 64 C111 54, 107 48, 97 46 C95 35, 84 31, 80 33 C76 31, 64 35, 62 46 C52 48, 48 54, 43 64 Z" fill="#854d0e"/>
                   <path d="M80 16 Q88 4 79 3 Q74 10 79 16 Z" fill="#713f12"/>
                   <path d="M49 52 Q61 46 73 50 Q80 42 87 50 Q99 46 111 52 Q105 38 80 36 Q55 38 49 52 Z" fill="#a16207"/>
                 </g>
               </svg>
+
             </div>
           </div>
+
         </div>
+
       </div>
 
       <!-- 底部輸入工具列 -->
@@ -370,7 +412,7 @@
         </div>
 
         <div class="flex items-center space-x-1.5 pb-1">
-          <button onclick="triggerCameraUpload()" class="p-2.5 text-slate-600 bg-slate-100 hover:bg-indigo-100 active:bg-indigo-200 rounded-full shrink-0 transition" title="拍照或上傳故障畫面">
+          <button onclick="triggerCameraUpload()" class="p-2.5 text-slate-600 bg-slate-100 hover:bg-indigo-100 active:bg-indigo-200 rounded-full shrink-0 transition" title="拍照或上傳故障畫面（Groq AI 自動分析排查）">
             <svg class="w-5 h-5 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
@@ -721,28 +763,17 @@
     </div>
   </div>
 
-  <!-- 7. 核心 JavaScript -->
+  <!-- 7. 核心 JavaScript (知識庫無答案時自動呼叫 Groq AI 尋找解決方法 + 逐步排查) -->
   <script>
+    // ==========================================
+    // A. Supabase、Edge Function 與 Groq AI 雙通道引擎
+    // ==========================================
     const SUPABASE_URL = 'https://tgvuxmlkbhnnjsyajjow.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_EE0J2uwbUorM9ywIXsbjdw_usVeipmc';
     const EDGE_GATEWAY_NAME = 'xiaowei-rag-gateway';
     const EDGE_GATEWAY_URL = `${SUPABASE_URL}/functions/v1/${EDGE_GATEWAY_NAME}`;
     const GROQ_DIRECT_URL = 'https://api.groq.com/openai/v1/chat/completions';
     const DEFAULT_GROQ_KEY = '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';
-
-    function getActiveGroqKey() {
-      const saved = localStorage.getItem('xiaowei_groq_api_key');
-      return (saved && saved.trim()) ? saved.trim() : DEFAULT_GROQ_KEY;
-    }
-
-    window.promptGroqKeyModal = function() {
-      const current = getActiveGroqKey();
-      const next = prompt("【Groq API Key 設定】\n若需測試或更換 Groq 金鑰，請輸入 gsk_ 開頭金鑰：", current);
-      if (next !== null) {
-        localStorage.setItem('xiaowei_groq_api_key', next.trim());
-        alert("✅ 已更新本機 Groq API Key 設定！");
-      }
-    };
 
     let supabaseClient = null;
     try {
@@ -753,66 +784,28 @@
       console.error("Supabase Client 初始化異常:", e);
     }
 
-    // 依問題關鍵字產生情境化排查步驟（確保即使外部 API 失敗也貼近使用者問題）
-    function buildContextAwareFallbackSteps(queryText = '') {
-      const q = String(queryText).toLowerCase();
-      if (q.includes('vpn') || q.includes('憑證') || q.includes('hicos') || q.includes('網站')) {
-        return [
-          "先確認本機網路與 Wi-Fi／有線連線正常，並嘗試開啟瀏覽器「無痕視窗」重新登入測試。",
-          "確認讀卡機燈號與 HiCOS 卡片元件狀態正常，並檢查帳號密碼或憑證是否過期／鎖卡。",
-          "若為特定院內或健保網站異常，請先確認其他同事電腦是否相同，並記錄錯誤訊息以利報修處理。"
-        ];
-      }
-      if (q.includes('his') || q.includes('醫令') || q.includes('病歷') || q.includes('pacs')) {
-        return [
-          "先截圖或記下畫面跳出的錯誤訊息與操作功能路徑，確認是單一畫面卡住還是整個系統無法回應。",
-          "嘗試重新登入系統或關閉後重新開啟應用程式，並確認網路連線與相關背景元件運作正常。",
-          "若多人或整個診間／護理站同時無法使用，請立即通報資訊室並標註為緊急處理。"
-        ];
-      }
-      if (q.includes('印表機') || q.includes('標籤') || q.includes('條碼') || q.includes('列印')) {
-        return [
-          "先檢查設備電源、連線（USB／網路）以及紙張、標籤紙或碳帶是否裝填正確且無卡紙。",
-          "開啟列印佇列清除卡住或失敗的列印工作，並重新啟動印表機與列印來源程式後再測試。",
-          "若仍無法列印或影響臨床作業，請記錄設備位置與錯誤燈號，儘速建立報修單。"
-        ];
-      }
-      if (q.includes('更新') || q.includes('安裝') || q.includes('藍屏') || q.includes('當機') || q.includes('畫面')) {
-        return [
-          "先留意並記下畫面上的提示文字、安裝進度或錯誤代碼，確認是否為特定程式或更新／安裝過程卡住。",
-          "若為單一程式無回應，先嘗試關閉該程式後重新開啟；若整機凍結，先等待 1～2 分鐘觀察是否恢復（避免在資料寫入中強制斷電）。",
-          "重新啟動設備後再次確認是否正常；若反覆發生或無法進入系統，請直接點選「直接報修」。"
-        ];
-      }
-      return [
-        `針對「${queryText.slice(0, 24) || '目前問題'}」，先確認相關設備電源、網路連線與使用帳號狀態是否正常。`,
-        "嘗試重新啟動相關應用程式或設備，並觀察錯誤現象是否再次出現或顯示特定錯誤代碼。",
-        "若上述測試仍無法排除，請直接點擊下方「直接報修」，系統會將目前問題與測試紀錄一併帶入。"
-      ];
-    }
-
-    // 呼叫 Groq 進行問題分析與提供故障排查建議
+    // 1. 嘗試透過 Supabase Edge Function 呼叫；若尚未部署或逾時則直連 Groq API 尋找解決方法
     async function askGroqForTroubleshooting(queryText, candidates = [], isDef = false) {
-      const groqKey = getActiveGroqKey();
-      const refSummary = (Array.isArray(candidates) && candidates.length > 0)
-        ? candidates.slice(0, 3).map((m, i) => `參考 ${i + 1} [${m.item.sop_id}] ${m.item.title}：${(m.item.safe_steps || '').slice(0, 240)}`).join('\n')
-        : '內部知識庫無直接相符條目，請直接依 IT 維運實務提供排查建議。';
+      const hasRefs = Array.isArray(candidates) && candidates.length > 0;
+      const refSummary = hasRefs
+        ? candidates.slice(0, 3).map((m, i) => `參考 ${i + 1} [${m.item.sop_id}] ${m.item.title}：${(m.item.safe_steps || '').slice(0, 260)}`).join('\n')
+        : '內部知識庫無直接相符條目，請依 IT 與醫療設備維運經驗提出安全排查步驟。';
 
       const systemPrompt = isDef
         ? `你是親切活潑的 IT 維護小助手「小威」。請用繁體中文、通俗白話說明使用者詢問的名詞或概念，約 2~3 段，嚴格禁止輸出外部超連結。`
-        : `你是親切活潑的 IT 維護小助手「小威」。內部知識庫查無完全相符答案時，請直接針對使用者的問題進行分析，並提供具體、安全、可逐步測試的故障排查建議！
+        : `你是親切活潑的 IT 維護小助手「小威」。內部知識庫若無完全符合的答案，請運用你的 IT 維運與故障排查專業，為使用者提出安全、具體、可操作的解決步驟！
 
 【回答規範】：
-1. 繁體中文回答（台灣慣用 IT 術語）。
-2. 列出 **3 至 4 個具體排查步驟**，每個步驟務必獨立成行，並以「1. 」「2. 」「3. 」開頭。
-3. 步驟要安全、簡單，不要叫使用者執行危險的格式化或改機碼指令。
+1. 繁體中文回答（台灣慣用 IT 與設備維護術語）。
+2. 列出 **3 至 4 個具體排查或解決步驟**，每個步驟務必獨立成行，並以「1. 」「2. 」「3. 」開頭。
+3. 步驟要安全、簡單（例如重啟程式/設備、檢查連線、確認權限或更新版本），不要叫一般使用者做危險的磁碟格式化或改 Registry。
 4. 嚴格禁止輸出任何外部網頁超連結。`;
 
-      const userPrompt = `使用者問題／狀況：${queryText}\n\n${refSummary}`;
+      const userPrompt = `使用者狀況／問題：${queryText}\n\n${refSummary}`;
 
-      // 1. 嘗試 Edge Function
+      // 優先嘗試 Edge Function (rag_chat)
       try {
-        const edgeRes = await fetch(EDGE_GATEWAY_URL, {
+        const res = await fetch(EDGE_GATEWAY_URL, {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${SUPABASE_KEY}`,
@@ -831,26 +824,23 @@
             isDef: isDef
           })
         });
-        if (edgeRes.ok) {
-          const edgeData = await edgeRes.json();
-          const ans = edgeData?.answer ? String(edgeData.answer).trim() : '';
+        if (res.ok) {
+          const data = await res.json();
+          const ans = data?.answer ? String(data.answer).trim() : '';
           if (ans && !ans.includes('NO_MATCH')) {
-            console.log("✅ 已透過 Supabase Edge Function 取得 Groq 分析結果");
             return { text: ans, source: 'Edge Function + Groq' };
           }
-        } else {
-          console.warn("⚠️ Edge Function 回應狀態:", edgeRes.status);
         }
       } catch (e) {
-        console.warn("⚠️ 無法連線 Edge Function，改由 Groq API 呼叫:", e?.message || e);
+        console.warn("Edge Function 尚未就緒或連線中斷，改由 Groq 直連尋找解法:", e);
       }
 
-      // 2. 直接呼叫 Groq API (llama-3.3-70b-versatile)
+      // 直接呼叫 Groq Cloud API (llama-3.3-70b-versatile) 尋找解決方法
       try {
         const groqRes = await fetch(GROQ_DIRECT_URL, {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${groqKey}`,
+            "Authorization": `Bearer ${DEFAULT_GROQ_KEY}`,
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
@@ -868,20 +858,17 @@
           const data = await groqRes.json();
           const ans = data.choices?.[0]?.message?.content ? String(data.choices[0].message.content).trim() : '';
           if (ans) {
-            console.log("✅ 已直接透過 Groq API (llama-3.3-70b-versatile) 取得分析結果");
-            return { text: ans, source: 'Groq AI' };
+            return { text: ans, source: 'Groq Llama-3.3-70B' };
           }
-        } else {
-          const errBody = await groqRes.text().catch(() => '');
-          console.warn(`⚠️ Groq API 回應失敗 (HTTP ${groqRes.status}):`, errBody);
         }
       } catch (err) {
-        console.warn("⚠️ Groq API 請求例外（可能受 CORS 或網路限制）:", err?.message || err);
+        console.warn("Groq 直連例外:", err);
       }
 
       return null;
     }
 
+    // 2. 照片視覺辨識（優先走 Edge Function vision_diagnose；若尚未部署則提示或用文字比對）
     async function diagnoseImageWithEdge(compressedBase64, userHint = '') {
       try {
         const res = await fetch(EDGE_GATEWAY_URL, {
@@ -899,7 +886,9 @@
         });
         if (res.ok) {
           const data = await res.json();
-          if (data && data.ok && data.diagnosis) return data.diagnosis;
+          if (data && data.ok && data.diagnosis) {
+            return data.diagnosis;
+          }
         }
       } catch (e) {
         console.warn("視覺閘道呼叫異常:", e);
@@ -934,6 +923,9 @@
       });
     }
 
+    // ==========================================
+    // B. 內建核心 IT 基礎名詞詞庫
+    // ==========================================
     const BUILTIN_IT_GLOSSARY = {
       'dns': 'DNS（網域名稱系統，Domain Name System）就像是網路世界的「電話簿」。當我們在瀏覽器輸入好記的網址時，DNS 會在背景將網址翻譯成電腦設備看得懂的數字 IP 位址，讓我們不必背誦數字就能順利連線！',
       'dhcp': 'DHCP（動態主機設定協定，Dynamic Host Configuration Protocol）就像是網路世界的「自動發號碼牌櫃台」。每台電腦、讀卡機或印表機連上網路時，DHCP 伺服器會自動指派一組可用的 IP 位址與閘道器，無須手動逐台設定。',
@@ -942,6 +934,9 @@
       'his': 'HIS（醫療資訊系統，Hospital Information System）是醫院的數位神經中樞，整合掛號、門診醫令、電子病歷、檢驗檢查、藥局調劑與批價申報等臨床與行政作業。'
     };
 
+    // ==========================================
+    // C. 語音核心宣告：正宗「男童 / 青年男聲」音質
+    // ==========================================
     let isVoiceEnabled = true;
     let recognition = null;
     let isListening = false;
@@ -1081,6 +1076,9 @@
       }
     };
 
+    // ==========================================
+    // D. 小男孩走動、肢體動作與表情切換引擎
+    // ==========================================
     window.setBoyExpression = function(exprName) {
       const exprSurprised = document.getElementById('expr-surprised');
       const exprHappy = document.getElementById('expr-happy');
@@ -1091,9 +1089,13 @@
       exprHappy.style.display = 'none';
       exprThinking.style.display = 'none';
 
-      if (exprName === 'happy') exprHappy.style.display = 'block';
-      else if (exprName === 'thinking') exprThinking.style.display = 'block';
-      else exprSurprised.style.display = 'block';
+      if (exprName === 'happy') {
+        exprHappy.style.display = 'block';
+      } else if (exprName === 'thinking') {
+        exprThinking.style.display = 'block';
+      } else {
+        exprSurprised.style.display = 'block';
+      }
     };
 
     window.updateXiaoweiMood = function(mood, customText = '') {
@@ -1145,6 +1147,9 @@
       }
     };
 
+    // ==========================================
+    // E. UI 介面切換與訊息氣泡
+    // ==========================================
     window.updateTurnUI = function() {
       const badge = document.getElementById('turnCounterBadge');
       if (!badge) return;
@@ -1188,7 +1193,7 @@
 
       const activeTabEl = document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1));
       if (activeTabEl) activeTabEl.classList.remove('hidden');
-      const activeNavBtn = document.getElementById('nav' + tab.charAt(0).toUpperCase() + t.slice(1) + 'Btn');
+      const activeNavBtn = document.getElementById('nav' + tab.charAt(0).toUpperCase() + tab.slice(1) + 'Btn');
       if (activeNavBtn) activeNavBtn.className = "py-2.5 border-b-2 border-indigo-400 text-indigo-400 font-bold";
     };
 
@@ -1213,8 +1218,8 @@
       if (String(sop.sop_id).startsWith('GROQ-')) {
         return `
           <div class="mt-2 pt-1.5 border-t border-slate-100 text-[10px] text-amber-800 flex flex-wrap items-center justify-between gap-1">
-            <span>⚡ 知識庫無直接答案，由 <b>${sop.sourceLabel || 'Groq AI'}</b> 進行分析與提供排查建議</span>
-            <span class="bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.2 rounded font-bold">AI 排查建議</span>
+            <span>⚡ 知識庫無相符條目，由 <b>Groq AI</b> 生成建議排查步驟</span>
+            <span class="bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.2 rounded font-bold">AI 建議排查</span>
           </div>
         `;
       }
@@ -1253,7 +1258,7 @@
         box.className = "flex space-x-2.5 items-start";
         let actionArea = '';
 
-        if (buttonType === 'quick_chips') {
+        if (false && buttonType === 'quick_chips') {
           actionArea = `
             <div class="mt-2.5 pt-2 border-t border-slate-100">
               <p class="text-[10px] text-slate-400 mb-1.5">常見報修高頻情境快選（或點左側 📷 上傳故障照片）：</p>
@@ -1346,6 +1351,9 @@
       area.scrollTop = area.scrollHeight;
     };
 
+    // ==========================================
+    // F. 狀態變數與上下文初始化
+    // ==========================================
     let currentUser = null;
     let currentSessionId = 'SESSION-' + Date.now();
     let turnCount = 0;
@@ -1412,7 +1420,7 @@
       if (chatArea) chatArea.innerHTML = '';
       const hello = `${currentUser ? currentUser.name : '您好'} 您好！我是小威。請問您的設備遇到什麼狀況呢？`;
       window.updateXiaoweiMood('idle', `「${hello}」`);
-      window.appendUserChat('ai', hello, false, 'quick_chips');
+      window.appendUserChat('ai', hello, false);
     };
 
     window.logChatToSupabase = async function(role, content, hasImg = false) {
@@ -1435,8 +1443,12 @@
       }
     };
 
+    // ==========================================
+    // G. 登入成功處理
+    // ==========================================
     window.loginUserSuccess = function(user) {
       currentUser = user;
+
       const authSec = document.getElementById('authSection');
       if (authSec) {
         authSec.style.display = 'none';
@@ -1493,7 +1505,7 @@
         const hello = `${currentUser.name} 您好！我是小威。請問您的設備遇到什麼狀況呢？`;
         window.updateXiaoweiMood('idle', `「${hello}」`);
 
-        window.appendUserChat('ai', hello, false, 'quick_chips');
+        window.appendUserChat('ai', hello, false);
         window.logChatToSupabase('ai', hello);
         if (typeof window.speak === 'function') {
           window.speak(hello, () => window.startListening());
@@ -1631,6 +1643,9 @@
       }
     };
 
+    // ==========================================
+    // H. 密碼複雜度檢驗與修改
+    // ==========================================
     function evaluatePasswordComplexity(pwd) {
       return {
         length: pwd.length >= 8,
@@ -1643,6 +1658,7 @@
 
     window.checkPasswordComplexityRealtime = function(pwd) {
       const res = evaluatePasswordComplexity(pwd);
+
       const updateRuleUI = (elementId, passed) => {
         const el = document.getElementById(elementId);
         if (!el) return;
@@ -1764,6 +1780,9 @@
       }
     };
 
+    // ==========================================
+    // I. 知識庫權限治理、混合檢索與上下文分析
+    // ==========================================
     function getAccessibleKnowledgeBase(sourceList = knowledgeBase) {
       if (!sourceList || !Array.isArray(sourceList)) return [];
       const userRole = currentUser ? currentUser.role : 'user';
@@ -1904,7 +1923,9 @@
         return { item: k, score: score };
       });
 
-      return scored.filter(s => s.score >= 25).sort((a, b) => b.score - a.score);
+      const isErrorOrConflict = /(無法登錄|不能允許|宣告|衝突|錯誤|失敗|逾時|中斷|連線異常)/.test(rawQ);
+      const threshold = isErrorOrConflict ? 45 : 30;
+      return scored.filter(s => s.score >= threshold).sort((a, b) => b.score - a.score);
     }
 
     function parseStepsToArray(safeStepsText) {
@@ -1991,6 +2012,34 @@
       return paragraphs.length > 0 ? paragraphs : [rawText];
     }
 
+
+    function buildSymptomTroubleshootingSteps(queryText = '') {
+      const q = String(queryText).toLowerCase();
+      if (q.includes('宣告') || q.includes('無法登錄') || q.includes('不能允許') || q.includes('名稱') || q.includes('衝突')) {
+        return [
+          "1. 確認網段內是否有另一台電腦或工作站使用相同名稱或重複宣告該名稱，先將重複名稱的設備暫時斷網或重新啟動後測試。",
+          "2. 檢查兩端電腦的 IP 位址、子網路遮罩與 DNS／DHCP 租約狀態，確認是否有 IP 位址衝突或網域／工作群組名稱重複。",
+          "3. 在受影響電腦上重新啟動網路／名稱解析相關服務或完整重新開機，再驗證是否可正常登錄與連線。",
+          "4. 若仍顯示無法登錄或名稱衝突，請保留兩端 IP 與完整訊息並直接點選「直接報修」，由資訊室／網管人員協助排查。"
+        ];
+      }
+      if (q.includes('vpn') || q.includes('憑證') || q.includes('hicos') || q.includes('網站')) {
+        return [
+          "1. 確認本機有線或 Wi-Fi 網路連線正常，並嘗試開啟瀏覽器「無痕視窗」重新登入測試。",
+          "2. 檢查讀卡機燈號、卡片插入狀態與憑證／元件是否正常，避免直接清除全部瀏覽器紀錄導致儲存密碼遺失。",
+          "3. 若仍無法連線或多人同時異常，請記下錯誤訊息並點選「直接報修」由資訊室協助處理。"
+        ];
+      }
+      return [
+        `1. 先確認「${queryText.slice(0, 26) || '目前問題'}」涉及的設備電源、網路連線與系統畫面狀態是否正常。`,
+        "2. 嘗試重新啟動相關應用程式或設備，並觀察是否出現相同提示或錯誤代碼。",
+        "3. 若問題持續存在，請直接點選下方「直接報修」，小威會將您的問題描述與測試紀錄一併帶入。"
+      ];
+    }
+
+    // ==========================================
+    // J. 對話發送與逐步測試引導流程 (知識庫無答案時自動用 Groq 找解決方法)
+    // ==========================================
     window.handleUserSend = async function() {
       const input = document.getElementById('userMsgInput');
       if (!input) return;
@@ -2021,7 +2070,7 @@
         }
       }
 
-      window.updateXiaoweiMood('thinking', `「收到！小威正在檢索知識庫並呼叫 Groq 進行分析...」`);
+      window.updateXiaoweiMood('thinking', `「收到！小威正在檢索知識庫並準備用 Groq AI 找解法...」`);
 
       const isSevereHardware = (q.includes('冒煙') || q.includes('焦味') || q.includes('斷掉') || q.includes('摔壞') || q.includes('燒掉') || q.includes('電池膨脹') || q.includes('直接派工') || q.includes('報修就好'));
       if (isSevereHardware) {
@@ -2125,6 +2174,7 @@
     };
 
     async function startStepByStepGuidance(sop, combinedQuery) {
+      // 1. 內部知識庫有相符 SOP
       if (sop) {
         const followupQ = extractFollowupText(sop);
         if (turnCount === 1 && inquiryContext.originalProblem.length <= 14 && followupQ && sop.allow_self_resolve !== false) {
@@ -2149,6 +2199,7 @@
         return;
       }
 
+      // 2. 知識庫沒有答案：呼叫 Groq AI 尋找解決方法
       const isDef = isDefinitionQuery(inquiryContext.originalProblem);
       const coreWord = extractCoreIntent(inquiryContext.originalProblem).toLowerCase();
 
@@ -2170,7 +2221,7 @@
         return;
       }
 
-      window.updateXiaoweiMood('thinking', '「知識庫無直接答案，小威正呼叫 Groq 分析並提供排查建議...」');
+      window.updateXiaoweiMood('thinking', '「知識庫無直接答案，小威正請 Groq AI 尋找解決方法...」');
 
       const groqResult = await askGroqForTroubleshooting(combinedQuery, inquiryContext.retrievedCandidates, isDef);
 
@@ -2180,23 +2231,22 @@
           const defHtml = `
             <div class="bg-amber-50/90 p-3 rounded-xl border border-amber-300 text-slate-800 text-xs leading-relaxed shadow-sm">
               <span class="font-bold text-amber-950 flex items-center gap-1 mb-1">
-                <span>⚡</span> ${groqResult.source} 解答
+                <span>⚡</span> Groq AI 智能解答
               </span>
               ${groqResult.text.replace(/\n/g, '<br>')}
             </div><br>
             請問上述說明是否已解答您的疑問？
           `;
           window.appendUserChat('ai', defHtml, true, 'definition_action');
-          window.logChatToSupabase('ai', `${groqResult.source} 解答: ${groqResult.text}`);
-          window.speak("已為您整理說明，請問是否解答您的疑問？");
+          window.logChatToSupabase('ai', `Groq AI 解答: ${groqResult.text}`);
+          window.speak("已透過 Groq AI 為您整理說明，請問是否解答您的疑問？");
         } else {
-          window.updateXiaoweiMood('step', '「已為您分析並擬定排查建議，我們一步一步試試看！」');
+          window.updateXiaoweiMood('step', '「Groq AI 找到排查方法囉！我們一步一步試試看！」');
           const dynamicSteps = parseGroqGeneratedSteps(groqResult.text);
           const groqSopObj = {
             sop_id: 'GROQ-AI',
-            title: `問題分析與排查：${inquiryContext.originalProblem.slice(0, 32)}`,
+            title: `Groq AI 排查：${inquiryContext.originalProblem.slice(0, 32)}`,
             status: 'AI建議',
-            sourceLabel: groqResult.source,
             urgency: inquiryContext.isMajorIncident ? 'P1' : 'P2',
             escalate_dept: '維護工程組',
             allow_self_resolve: true
@@ -2209,27 +2259,29 @@
             currentStepIndex: 0
           };
 
-          const introMsg = `知識庫目前無直接答案，已透過 <b>${groqResult.source}</b> 分析您的狀況並提供 <b>${dynamicSteps.length} 項排查建議</b>：`;
+          const introMsg = `知識庫目前無完全相符條目，小威已請 <b>Groq AI</b> 為您擬定 <b>${dynamicSteps.length} 項解決排查步驟</b>，我們先試試看：`;
           window.appendUserChat('ai', introMsg);
-          setTimeout(() => presentCurrentStep(), 250);
+          setTimeout(() => presentCurrentStep(), 300);
         }
       } else {
-        window.updateXiaoweiMood('step', '「小威已依您的問題情境整理排查建議！」');
-        const contextSteps = buildContextAwareFallbackSteps(combinedQuery);
+        // 3. 若 Groq 連線異常，提供基本安全急救步驟並可隨時建單
+        window.updateXiaoweiMood('step', '「小威為您提供基本安全排查步驟！」');
+        const fallbackSteps = [
+          "先確認設備電源與網路/訊號線是否接妥，必要時重新啟動應用程式或設備。",
+          "確認畫面上的錯誤訊息或代碼，並測試另一台設備或不同網路環境是否正常。",
+          "若仍無法排除，請直接點擊下方「直接報修」由工程師協助處理。"
+        ];
         const fbSop = {
-          sop_id: 'GROQ-CTX',
-          title: `情境排查建議：${inquiryContext.originalProblem.slice(0, 28)}`,
-          status: '情境分析',
-          sourceLabel: '情境智慧分析（外部 API 逾時備援）',
+          sop_id: 'GROQ-FALLBACK',
+          title: '基本安全排查指引',
+          status: 'AI建議',
           urgency: inquiryContext.isMajorIncident ? 'P1' : 'P2',
           escalate_dept: '維護工程組',
           allow_self_resolve: true
         };
         inquiryContext.matchedSop = fbSop;
-        activeGuidance = { sop: fbSop, steps: contextSteps, currentStepIndex: 0 };
-        const noteMsg = `知識庫無直接相符條目（外部 AI 連線暫時逾時，可按 F12 查看詳情），小威先依您的問題情境整理 <b>${contextSteps.length} 項排查建議</b>：`;
-        window.appendUserChat('ai', noteMsg);
-        setTimeout(() => presentCurrentStep(), 250);
+        activeGuidance = { sop: fbSop, steps: fallbackSteps, currentStepIndex: 0 };
+        presentCurrentStep();
       }
     }
 
@@ -2326,6 +2378,9 @@
       }
     }
 
+    // ==========================================
+    // K. 精簡 7 欄位報修確認表單控制
+    // ==========================================
     function openTicketModalPreview() {
       const now = new Date();
       const currentTimeStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
@@ -2475,6 +2530,9 @@ ${stepsText}
       }
     };
 
+    // ==========================================
+    // L. 註冊、後台管理與知識庫治理
+    // ==========================================
     window.handleRegisterSubmit = async function(e) {
       e.preventDefault();
       if (!supabaseClient) {
@@ -3099,6 +3157,9 @@ ${stepsText}
       window.fetchKbFromSupabase();
     };
 
+    // ==========================================
+    // M. 現場照片上傳：先嘗試視覺辨識；若視覺未回應則請 Groq AI 依情境提供排查建議
+    // ==========================================
     window.triggerCameraUpload = function() {
       const input = document.getElementById('cameraInput');
       if (input) input.click();
@@ -3151,28 +3212,38 @@ ${stepsText}
           const best = matches.length > 0 ? matches[0].item : null;
           startStepByStepGuidance(best, combinedQuery);
         } else {
+          // 視覺閘道未回應時，直接請 Groq AI 針對照片情境與已知描述提出排查步驟
           const hintText = inquiryContext.originalProblem
             ? `使用者上傳了現場故障照片，先前描述的問題是：「${inquiryContext.originalProblem}」`
-            : `使用者上傳了現場設備/螢幕故障照片，請提供一般常見的畫面異常、程式卡住或設備連線故障排查步驟`;
+            : `使用者上傳了現場設備/螢幕故障照片（目前無法直接讀取影像像素，請提供一般常見的螢幕畫面異常、安裝升級卡住或設備連線故障的排查步驟）`;
 
-          inquiryContext.visionDiagnosisText = '已附現場照片（已改由 Groq/情境分析擬定排查步驟）';
+          inquiryContext.visionDiagnosisText = '已附現場照片（視覺閘道未回應，已改由 Groq AI 擬定排查步驟）';
           const groqResult = await askGroqForTroubleshooting(hintText, inquiryContext.retrievedCandidates, false);
-          const steps = groqResult?.text ? parseGroqGeneratedSteps(groqResult.text) : buildContextAwareFallbackSteps(hintText);
 
-          const photoSop = {
-            sop_id: 'GROQ-PHOTO',
-            title: '照片故障情境排查',
-            status: 'AI建議',
-            sourceLabel: groqResult?.source || '情境智慧分析',
-            urgency: inquiryContext.isMajorIncident ? 'P1' : 'P2',
-            escalate_dept: '維護工程組',
-            allow_self_resolve: true
-          };
-          inquiryContext.matchedSop = photoSop;
-          activeGuidance = { sop: photoSop, steps: steps, currentStepIndex: 0 };
-          const intro = `小威收到您的照片囉！已為您整理 <b>${steps.length} 項排查建議</b>（照片也會一併帶入報修單）：`;
-          window.appendUserChat('ai', intro);
-          setTimeout(() => presentCurrentStep(), 250);
+          if (groqResult && groqResult.text) {
+            const dynamicSteps = parseGroqGeneratedSteps(groqResult.text);
+            const photoGroqSop = {
+              sop_id: 'GROQ-PHOTO',
+              title: '照片故障情境 Groq AI 排查',
+              status: 'AI建議',
+              urgency: inquiryContext.isMajorIncident ? 'P1' : 'P2',
+              escalate_dept: '維護工程組',
+              allow_self_resolve: true
+            };
+            inquiryContext.matchedSop = photoGroqSop;
+            activeGuidance = { sop: photoGroqSop, steps: dynamicSteps, currentStepIndex: 0 };
+            const intro = `小威收到您的照片囉！目前視覺閘道尚未回應，已先請 <b>Groq AI</b> 為您整理 <b>${dynamicSteps.length} 項排查建議</b>（照片也會一併帶入報修單）：`;
+            window.appendUserChat('ai', intro);
+            setTimeout(() => presentCurrentStep(), 250);
+          } else {
+            const fallbackAnalysis = `
+              小威已收到您上傳的現場照片！建議您直接在下方輸入畫面文字或錯誤代碼，或點擊下方直接建立報修單（照片紀錄將一併通報工程師）：<br>
+              <button onclick="openTicketModalPreview()" class="mt-2 w-full py-2 bg-indigo-700 hover:bg-indigo-800 text-white rounded-lg font-bold text-xs shadow transition">
+                🎫 帶著照片紀錄建立報修單
+              </button>
+            `;
+            window.appendUserChat('ai', fallbackAnalysis, false);
+          }
         }
 
         event.target.value = '';
