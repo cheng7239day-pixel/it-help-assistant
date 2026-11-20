@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>威策電腦 - IT 智慧服務台與案件管理系統 (RAG v3)</title>
+  <title>威策電腦 - IT 智慧服務台與案件管理系統 (Edge RAG + Vision)</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Supabase 客戶端 SDK (UMD 版) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -126,11 +126,11 @@
     </div>
 
     <div class="flex items-center space-x-1.5">
-      <button onclick="promptConfigureGroqKey()" class="text-[10px] bg-amber-900/80 hover:bg-amber-800 border border-amber-400/50 text-amber-200 px-2.5 py-0.5 rounded-full transition flex items-center gap-1">
-        <span>⚡</span> RAG + Groq 設定
-      </button>
+      <span id="edgeGatewayBadge" class="text-[9px] bg-indigo-900/90 text-sky-200 border border-indigo-400/50 px-2 py-0.5 rounded-full flex items-center gap-1" title="API Key 已受 Supabase Edge Function 保護">
+        <span>🛡️</span> Edge Gateway + Vision
+      </span>
       <span id="supabaseStatusBadge" class="text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-600/50 px-2 py-0.5 rounded-full">
-        ● Supabase + RAG v3 連線中
+        ● Supabase RAG 連線中
       </span>
       <button id="changePwdBtn" onclick="openChangePasswordModal(false)" class="hidden px-2 py-1 bg-indigo-900/80 hover:bg-indigo-800 border border-indigo-400/40 rounded text-indigo-200 text-xs transition">
         🔑 變更密碼
@@ -261,7 +261,7 @@
           </span>
           <span id="ragGuardBadge" class="text-[10px] bg-emerald-100 text-emerald-900 border border-emerald-300 px-1.5 py-0.2 rounded font-medium flex items-center gap-1">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
-            Grounded RAG 防幻覺模式
+            Edge RAG + 視覺辨識
           </span>
         </span>
         <div class="flex items-center gap-1.5">
@@ -399,7 +399,7 @@
 
       <!-- 底部輸入工具列 -->
       <div class="bg-white border-t border-slate-200 px-3 pt-2 safe-bottom shrink-0 shadow-lg z-20">
-        <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden" onchange="handleImageSelected(event)">
+        <input type="file" id="cameraInput" accept="image/*" class="hidden" onchange="handleImageSelected(event)">
 
         <div id="voiceStatusBanner" class="hidden mb-2 p-2 bg-rose-50 border border-rose-200 rounded-lg flex items-center justify-between">
           <div class="flex items-center space-x-2 text-xs text-rose-800">
@@ -412,7 +412,7 @@
         </div>
 
         <div class="flex items-center space-x-1.5 pb-1">
-          <button onclick="triggerCameraUpload()" class="p-2.5 text-slate-600 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-full shrink-0" title="拍照或上傳故障畫面">
+          <button onclick="triggerCameraUpload()" class="p-2.5 text-slate-600 bg-slate-100 hover:bg-indigo-100 active:bg-indigo-200 rounded-full shrink-0 transition" title="拍照或上傳故障畫面（AI 自動辨識錯誤代碼）">
             <svg class="w-5 h-5 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
@@ -426,7 +426,7 @@
           </button>
 
           <div class="flex-1">
-            <input id="userMsgInput" type="text" placeholder="告訴小威問題 (例：健保讀卡機無法讀卡、標籤機卡紙、HIS當機)..."
+            <input id="userMsgInput" type="text" placeholder="輸入問題或點左側相機上傳藍屏/錯誤畫面..."
                    class="w-full bg-slate-100 text-slate-800 text-sm rounded-full px-3.5 py-2 border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-600"
                    onfocus="handleInputFocused(true)" onblur="handleInputFocused(false)"
                    onkeypress="if(event.key==='Enter') handleUserSend()">
@@ -594,7 +594,7 @@
     </div>
   </div>
 
-  <!-- 5. 精簡 7 欄位報修表單確認 Modal (支援 P1 重大事件預警) -->
+  <!-- 5. 精簡 7 欄位報修表單確認 Modal (支援 P1 重大事件預警與視覺辨識錯誤碼帶入) -->
   <div id="ticketModal" class="hidden absolute inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
     <div class="bg-white text-slate-900 w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden flex flex-col my-auto border border-slate-200">
       
@@ -676,7 +676,7 @@
     </div>
   </div>
 
-  <!-- 6. 新增/修改 SOP 條目專用 Modal (支援審核狀態與適用對象治理) -->
+  <!-- 6. 新增/修改 SOP 條目專用 Modal -->
   <div id="sopEditModal" class="hidden absolute inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
     <div class="bg-white text-slate-800 w-full max-w-xl rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
       <div class="bg-[#10183d] text-white px-4 py-2.5 flex justify-between items-center shrink-0">
@@ -763,10 +763,129 @@
     </div>
   </div>
 
-  <!-- 7. 核心 JavaScript (Phase 1: Grounded RAG 防幻覺 + 引用標章 + 權限過濾 + 多輪上下文) -->
+  <!-- 7. 核心 JavaScript (Phase 2: Supabase Edge Function Gateway + 多模態視覺錯誤碼辨識 + 零金鑰暴露) -->
   <script>
     // ==========================================
-    // A. 內建核心 IT 基礎名詞詞庫 (純概念查詢安全備援)
+    // A. Supabase 與 Edge Function 閘道設定 (前端零 Groq API Key)
+    // ==========================================
+    const SUPABASE_URL = 'https://tgvuxmlkbhnnjsyajjow.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_EE0J2uwbUorM9ywIXsbjdw_usVeipmc';
+    const EDGE_GATEWAY_NAME = 'xiaowei-rag-gateway';
+    const EDGE_GATEWAY_URL = `${SUPABASE_URL}/functions/v1/${EDGE_GATEWAY_NAME}`;
+
+    let supabaseClient = null;
+    try {
+      if (window.supabase && typeof window.supabase.createClient === 'function') {
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+      }
+    } catch (e) {
+      console.error("Supabase Client 初始化異常:", e);
+    }
+
+    // 統一呼叫 Supabase Edge Function (保護後端 GROQ_API_KEY)
+    async function invokeXiaoweiEdgeGateway(payload) {
+      try {
+        if (supabaseClient && supabaseClient.functions) {
+          const { data, error } = await supabaseClient.functions.invoke(EDGE_GATEWAY_NAME, {
+            body: payload
+          });
+          if (!error && data) return data;
+          if (error) console.warn("supabaseClient.functions.invoke 回傳警告:", error);
+        }
+      } catch (e) {
+        console.warn("SDK invoke 例外，切換為標準 HTTPS fetch:", e);
+      }
+
+      try {
+        const res = await fetch(EDGE_GATEWAY_URL, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${SUPABASE_KEY}`,
+            "apikey": SUPABASE_KEY,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          const errText = await res.text().catch(() => '');
+          console.warn(`Edge Function HTTP ${res.status}:`, errText);
+          return null;
+        }
+        return await res.json();
+      } catch (err) {
+        console.error("Edge Function 連線失敗:", err);
+        return null;
+      }
+    }
+
+    // Grounded RAG 生成請求 (透過 Edge Function)
+    async function callEdgeGroundedRAG(combinedQuery, topSops = [], isDef = false) {
+      const serializedCandidates = (topSops || []).slice(0, 3).map(m => ({
+        sop_id: m.item.sop_id,
+        title: m.item.title,
+        status: m.item.status || '草稿待審',
+        followup_questions: m.item.followup_questions || '',
+        safe_steps: m.item.safe_steps || '',
+        escalation: m.item.escalation || ''
+      }));
+
+      const data = await invokeXiaoweiEdgeGateway({
+        mode: "rag_chat",
+        query: combinedQuery,
+        candidates: serializedCandidates,
+        isDef: isDef
+      });
+
+      if (data && data.ok && data.answer) {
+        return String(data.answer).trim();
+      }
+      return null;
+    }
+
+    // 多模態視覺診斷請求 (透過 Edge Function 辨識藍屏代碼、燈號與錯誤視窗)
+    async function callEdgeVisionDiagnose(compressedBase64, userHint = '') {
+      const data = await invokeXiaoweiEdgeGateway({
+        mode: "vision_diagnose",
+        imageBase64: compressedBase64,
+        userHint: userHint
+      });
+
+      if (data && data.ok && data.diagnosis) {
+        return data.diagnosis;
+      }
+      return null;
+    }
+
+    // 前端圖片壓縮工具 (確保手機拍照的高解析度圖檔快速上傳不逾時)
+    function compressImageForVision(dataUrl, maxDim = 1024, quality = 0.82) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          let w = img.width;
+          let h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = () => resolve(dataUrl);
+        img.src = dataUrl;
+      });
+    }
+
+    // ==========================================
+    // B. 內建核心 IT 基礎名詞詞庫 (純概念查詢安全備援)
     // ==========================================
     const BUILTIN_IT_GLOSSARY = {
       'dns': 'DNS（網域名稱系統，Domain Name System）就像是網路世界的「電話簿」。當我們在瀏覽器輸入好記的網址時，DNS 會在背景將網址翻譯成電腦設備看得懂的數字 IP 位址，讓我們不必背誦數字就能順利連線！',
@@ -775,105 +894,6 @@
       'ip': 'IP（網際網路協定）位址就像是連網設備在網路世界中的「專屬門牌號碼」，每台電腦或印表機都必須有合法的 IP 位址，網路封包才能精準送達。',
       'his': 'HIS（醫療資訊系統，Hospital Information System）是醫院的數位神經中樞，整合掛號、門診醫令、電子病歷、檢驗檢查、藥局調劑與批價申報等臨床與行政作業。'
     };
-
-    // ==========================================
-    // B. Groq Cloud LPU AI 核心連線模組 (Grounded RAG 嚴格防幻覺)
-    // ==========================================
-    const DEFAULT_GROQ_API_KEY = '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';
-
-    window.getGroqApiKey = function() {
-      const stored = localStorage.getItem('welltake_groq_api_key');
-      if (stored && stored.trim().length > 0) return stored.trim();
-      return DEFAULT_GROQ_API_KEY;
-    };
-
-    window.promptConfigureGroqKey = function() {
-      const current = window.getGroqApiKey();
-      const input = prompt("【RAG + Groq Cloud AI 設定】\n如需替換金鑰，請輸入新的 API Key（預設已載入系統專用 Key）：", current || '');
-      if (input !== null) {
-        localStorage.setItem('welltake_groq_api_key', input.trim());
-        alert("✅ API Key 已成功儲存！");
-      }
-    };
-
-    // 嚴格防幻覺 Grounded RAG 生成：必須僅依據傳入的 topSops 回答，禁止模型自由編造
-    async function callGroqGroundedRAG(combinedQuery, topSops = [], isDef = false) {
-      const apiKey = window.getGroqApiKey();
-      if (!apiKey) return null;
-
-      const endpoint = "https://api.groq.com/openai/v1/chat/completions";
-
-      // 將 Top-3 檢索到的 SOP 序列化為嚴格參考上下文
-      let contextBlock = "（無相符的內部知識庫條目）";
-      if (topSops && topSops.length > 0) {
-        contextBlock = topSops.map((m, idx) => {
-          const item = m.item;
-          return `【參考條目 ${idx + 1}】
-編號: ${item.sop_id}
-標題: ${item.title}
-審核狀態: ${item.status || '草稿待審'}
-追問確認: ${item.followup_questions || '無'}
-標準處理步驟: ${item.safe_steps || ''}
-升級條件: ${item.escalation || '無'}`;
-        }).join("\n\n---\n\n");
-      }
-
-      const systemPrompt = isDef
-        ? `你是企業與醫療 IT 維護小助手「小威」。使用者正在詢問 IT 專有名詞概念。
-【嚴格防幻覺規則】：
-1. 若下方【內部參考資料】有說明，請優先依據資料用繁體中文白話解釋。
-2. 若為通用 IT 基礎名詞（如 DNS、DHCP、IP），可用 2 段通俗白話解釋原理；但**嚴禁編造院內專屬網址、分機號碼或特定系統設定**。
-3. 嚴禁輸出任何外部網頁連結。`
-        : `你是企業與醫療 IT 維護小助手「小威」。請根據下方檢索到的【內部參考 SOP 資料】回答使用者的設備問題。
-
-【嚴格防幻覺護欄（最高指導原則）】：
-1. **絕對忠於檢索資料**：你**只能**使用下方【內部參考 SOP 資料】中明確記載的步驟與流程進行整合說明。
-2. **禁止編造**：絕不可自行腦補或編造院內聯絡電話、分機、網址、系統選單代碼、指令或未出現在參考資料中的操作步驟。
-3. **無相關資料時必須拒答**：如果下方【內部參考 SOP 資料】為空，或者與使用者的問題明顯無關，你**必須只回覆這四個字**：\`NO_MATCH\`，不要自行猜測解答！
-4. **輸出格式**：若資料相關，請將最合適的排查動作整理為 2~4 個清晰步驟，每個步驟獨立成行並以「1. 」「2. 」「3. 」開頭。若資料內含「〔請填入〕」，請提醒使用者「此項目涉及院內特定設定，若不確定請直接點選報修」。`;
-
-      const userPrompt = `【使用者對話與問題描述】：\n${combinedQuery}\n\n【內部參考 SOP 資料】：\n${contextBlock}`;
-
-      const requestBody = {
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        temperature: 0.1, // 極低溫度抑制幻覺
-        max_tokens: 700
-      };
-
-      const candidateEndpoints = [
-        endpoint,
-        "https://corsproxy.io/?https://api.groq.com/openai/v1/chat/completions"
-      ];
-
-      for (const url of candidateEndpoints) {
-        try {
-          const res = await fetch(url, {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${apiKey}`,
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify(requestBody)
-          });
-
-          if (res.ok) {
-            const data = await res.json();
-            const text = data.choices?.[0]?.message?.content;
-            if (text && text.trim().length > 0) {
-              return text.trim();
-            }
-          }
-        } catch (e) {
-          console.warn("Groq 通道重試:", url, e);
-        }
-      }
-
-      return null;
-    }
 
     // ==========================================
     // C. 語音核心宣告：正宗「男童 / 青年男聲」音質（徹底過濾女聲）
@@ -933,7 +953,7 @@
       }
       try {
         window.speechSynthesis.cancel();
-        const cleanText = String(text || '').replace(/<[^>]*>/g, '').replace(/📷|💻|💡|✅|❌|📋|⚠️|👤|🤖|👉|🎫|✨|🔍|⚡|📚|🚨|💳|🏷️|🏥|🌐/g, '');
+        const cleanText = String(text || '').replace(/<[^>]*>/g, '').replace(/📷|💻|💡|✅|❌|📋|⚠️|👤|🤖|👉|🎫|✨|🔍|⚡|📚|🚨|💳|🏷️|🏥|🌐|🛡️/g, '');
         const utterance = new SpeechSynthesisUtterance(cleanText);
         utterance.lang = 'zh-TW';
         utterance.pitch = 1.22; 
@@ -1049,7 +1069,7 @@
       if (mood === 'thinking') {
         window.setBoyExpression('thinking');
         if (walkerEl) walkerEl.classList.add('paused');
-        bubbleEl.innerText = customText || '「小威正在比對知識庫與審核紀錄...」';
+        bubbleEl.innerText = customText || '「小威正在透過視覺 AI 與知識庫分析中...」';
       } else if (mood === 'step') {
         window.setBoyExpression('surprised');
         if (walkerEl) walkerEl.classList.remove('paused');
@@ -1065,7 +1085,7 @@
       } else if (mood === 'ticket') {
         window.setBoyExpression('thinking');
         if (walkerEl) walkerEl.classList.add('paused');
-        bubbleEl.innerText = customText || '「別擔心，我已經把測試歷程與引用依據整理成報修單了！」';
+        bubbleEl.innerText = customText || '「別擔心，我已經把錯誤代碼與測試歷程整理成報修單了！」';
       } else {
         window.setBoyExpression('surprised');
         if (walkerEl) walkerEl.classList.remove('paused');
@@ -1202,7 +1222,7 @@
         if (buttonType === 'quick_chips') {
           actionArea = `
             <div class="mt-2.5 pt-2 border-t border-slate-100">
-              <p class="text-[10px] text-slate-400 mb-1.5">常見報修高頻情境快選：</p>
+              <p class="text-[10px] text-slate-400 mb-1.5">常見報修高頻情境快選（或直接點擊左下角 📷 拍照辨識錯誤畫面）：</p>
               <div class="flex flex-wrap gap-1.5">
                 <button onclick="sendQuickChip('健保讀卡機無法讀卡')" class="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 rounded-full text-[11px] font-medium transition">
                   💳 健保讀卡機無法讀卡
@@ -1293,20 +1313,8 @@
     };
 
     // ==========================================
-    // F. Supabase 初始化與狀態變數
+    // F. 狀態變數與上下文初始化
     // ==========================================
-    const SUPABASE_URL = 'https://tgvuxmlkbhnnjsyajjow.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_EE0J2uwbUorM9ywIXsbjdw_usVeipmc';
-    let supabaseClient = null;
-
-    try {
-      if (window.supabase && typeof window.supabase.createClient === 'function') {
-        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-      }
-    } catch (e) {
-      console.error("Supabase Client 初始化異常:", e);
-    }
-
     let currentUser = null;
     let currentSessionId = 'SESSION-' + Date.now();
     let turnCount = 0;
@@ -1334,6 +1342,7 @@
       isMajorIncident: false,
       location: '',
       errorCode: '',
+      visionDiagnosisText: '',
       unresolvedReason: '',
       startTime: '',
       pendingFollowupSopId: null
@@ -1358,6 +1367,7 @@
         isMajorIncident: false,
         location: '',
         errorCode: '',
+        visionDiagnosisText: '',
         unresolvedReason: '',
         startTime: `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`,
         pendingFollowupSopId: null
@@ -1732,9 +1742,8 @@
     };
 
     // ==========================================
-    // I. Phase 1 核心：知識庫權限治理、混合檢索與上下文分析
+    // I. 知識庫權限治理、混合檢索與上下文分析
     // ==========================================
-    // 依角色權限與停用狀態過濾可檢索的知識庫
     function getAccessibleKnowledgeBase(sourceList = knowledgeBase) {
       if (!sourceList || !Array.isArray(sourceList)) return [];
       const userRole = currentUser ? currentUser.role : 'user';
@@ -1742,9 +1751,7 @@
 
       return sourceList.filter(k => {
         if (!k || !k.title || String(k.title).trim() === '' || k.title === '未命名問題') return false;
-        // 1. 排除已停用條目 (14 筆)
         if (k.status === '已停用') return false;
-        // 2. 一般使用者排除「資訊室」專用高權限操作 (16 筆)
         if (!isItStaff && k.target_audience === '資訊室') return false;
         return true;
       });
@@ -1815,7 +1822,6 @@
       return score;
     }
 
-    // 結合治理權重排序的混合檢索
     function findBestSopMatches(queryText, sourceList = knowledgeBase) {
       const validList = getAccessibleKnowledgeBase(sourceList);
       if (!queryText || validList.length === 0) return [];
@@ -1872,13 +1878,9 @@
           }
         });
 
-        // 只有在已有基礎關鍵字關聯 (> 15 分) 時，才套用治理加權
         if (score >= 15) {
-          // 1. 醫療案件濃縮 (M-) 貼近院內真實作業，優先於通用範本
           if (sopIdL.startsWith('m-') && !isMaintenanceQuery) score += 14;
-          // 2. 維護類問題優先採用 PCM- 範本
           if (sopIdL.startsWith('pcm-') && isMaintenanceQuery) score += 16;
-          // 3. 已審核條目優先於草稿待審
           if (k.status === '已審核') score += 10;
         }
 
@@ -1973,7 +1975,7 @@
     }
 
     // ==========================================
-    // J. 對話發送與逐步測試引導流程 (Multi-turn RAG + 防幻覺)
+    // J. 對話發送與逐步測試引導流程 (Edge RAG + 防幻覺)
     // ==========================================
     window.handleUserSend = async function() {
       const input = document.getElementById('userMsgInput');
@@ -1996,7 +1998,6 @@
 
       extractSlotsFromUserMsg(q);
 
-      // 若前一步正在等待使用者回覆追問問題，合併上下文後直接進入該 SOP 步驟
       if (inquiryContext.pendingFollowupSopId) {
         const pendingSop = knowledgeBase.find(k => k.sop_id === inquiryContext.pendingFollowupSopId);
         inquiryContext.pendingFollowupSopId = null;
@@ -2008,7 +2009,6 @@
 
       window.updateXiaoweiMood('thinking', `「收到！小威正在檢索知識庫並核對審核版本...」`);
 
-      // 嚴重硬體故障直接建單
       const isSevereHardware = (q.includes('冒煙') || q.includes('焦味') || q.includes('斷掉') || q.includes('摔壞') || q.includes('燒掉') || q.includes('電池膨脹') || q.includes('直接派工') || q.includes('報修就好'));
       if (isSevereHardware) {
         inquiryContext.unresolvedReason = `硬體嚴重異常/要求直接派修：${q}`;
@@ -2039,7 +2039,6 @@
         console.warn("查詢 Supabase 異常，採用快取資料:", err);
       }
 
-      // 合併多輪對話上下文進行檢索
       const combinedQuery = [inquiryContext.originalProblem, ...inquiryContext.supplementaryInfo].join(' ');
       const matches = findBestSopMatches(combinedQuery, activeSops);
       inquiryContext.retrievedCandidates = matches.slice(0, 3);
@@ -2081,7 +2080,6 @@
       window.speak("請您再多補充一些細節，我為您重新比對。");
     };
 
-    // 直接進入指定 SOP 的逐步測試階段
     window.proceedGuidanceSteps = function(sopId) {
       const sop = knowledgeBase.find(k => k.sop_id === sopId);
       if (!sop) return;
@@ -2112,12 +2110,9 @@
       presentCurrentStep();
     };
 
-    // 啟動排查：優先知識庫（含追問引導）➔ Grounded RAG ➔ 防幻覺安全拒答轉報修
     async function startStepByStepGuidance(sop, combinedQuery) {
-      // 1. 內部知識庫有高信心相符 SOP
       if (sop) {
         const followupQ = extractFollowupText(sop);
-        // 若使用者首輪描述很簡短（<= 14字）且該 SOP 有專屬追問問題，先引導確認現場狀況
         if (turnCount === 1 && inquiryContext.originalProblem.length <= 14 && followupQ && sop.allow_self_resolve !== false) {
           inquiryContext.matchedSop = sop;
           inquiryContext.pendingFollowupSopId = sop.sop_id;
@@ -2140,7 +2135,6 @@
         return;
       }
 
-      // 2. 內部無直接高分命中：啟動 Grounded RAG 防幻覺檢索生成
       const isDef = isDefinitionQuery(inquiryContext.originalProblem);
       const coreWord = extractCoreIntent(inquiryContext.originalProblem).toLowerCase();
 
@@ -2162,11 +2156,10 @@
         return;
       }
 
-      window.updateXiaoweiMood('thinking', '「知識庫無完全相符條目，啟動 Grounded RAG 防幻覺驗證...」');
+      window.updateXiaoweiMood('thinking', '「知識庫無完全相符條目，正透過 Edge Gateway 執行防幻覺 RAG...」');
 
-      const ragResponse = await callGroqGroundedRAG(combinedQuery, inquiryContext.retrievedCandidates, isDef);
+      const ragResponse = await callEdgeGroundedRAG(combinedQuery, inquiryContext.retrievedCandidates, isDef);
 
-      // 若 Groq 判定 NO_MATCH（防幻覺攔截生效），或無可用參考依據，誠實拒答並引導報修
       if (!ragResponse || ragResponse.includes('NO_MATCH')) {
         inquiryContext.unresolvedReason = `知識庫暫無相符 SOP（防幻覺機制攔截無依據生成）：${combinedQuery}`;
         window.updateXiaoweiMood('ticket', '「知識庫暫無此專屬規範，已為您準備報修確認單！」');
@@ -2200,7 +2193,6 @@
         window.logChatToSupabase('ai', `RAG 概念解答: ${ragResponse}`);
         window.speak("已為您整理相關說明，請問是否解決您的疑問？");
       } else {
-        // 依據檢索上下文整合出的安全步驟
         const topRefSop = inquiryContext.retrievedCandidates[0]?.item || null;
         const dynamicSteps = parseGroqGeneratedSteps(ragResponse);
 
@@ -2281,7 +2273,6 @@
 
     function extractSlotsFromUserMsg(text) {
       const lower = String(text).toLowerCase();
-      // 重大事件與影響範圍偵測 (對接 3 稿升級條件)
       if (lower.includes('大家都') || lower.includes('其他人也') || lower.includes('整個科室') || 
           lower.includes('全部都') || lower.includes('整廠') || lower.includes('多診間') || 
           lower.includes('多人') || lower.includes('化療') || lower.includes('採血') || lower.includes('急診')) {
@@ -2317,7 +2308,7 @@
     }
 
     // ==========================================
-    // K. 精簡 7 欄位報修確認表單控制 (支援 P1 重大事件升級)
+    // K. 精簡 7 欄位報修確認表單控制 (含視覺辨識錯誤碼帶入)
     // ==========================================
     function openTicketModalPreview() {
       const now = new Date();
@@ -2331,7 +2322,6 @@
       document.getElementById('simple_call_time').value = currentTimeStr;
       document.getElementById('simple_location').value = inquiryContext.location || '';
 
-      // 判斷是否為 P1 緊急 / 重大事件
       const isP1 = inquiryContext.isMajorIncident || (inquiryContext.matchedSop && inquiryContext.matchedSop.urgency === 'P1');
       const urgencyBadge = document.getElementById('ticketUrgencyBadge');
       const majorBanner = document.getElementById('majorIncidentAlert');
@@ -2365,8 +2355,12 @@ ${stepsText}
 【轉單/未排除原因】：${failReason}
 【關聯對話 Session】：${currentSessionId}`;
 
+      if (inquiryContext.errorCode && inquiryContext.errorCode !== '無明確代碼') {
+        problemFullText += `\n【辨識錯誤代碼/燈號】：${inquiryContext.errorCode}`;
+      }
+
       if (uploadedImageBase64) {
-        problemFullText += `\n【現場照片紀錄】：同仁已於前端拍照上傳障礙照片`;
+        problemFullText += `\n【現場照片與 AI 視覺判讀】：${inquiryContext.visionDiagnosisText || '同仁已上傳現場障礙照片'}`;
       }
 
       document.getElementById('simple_problem').value = problemFullText;
@@ -2466,7 +2460,7 @@ ${stepsText}
     };
 
     // ==========================================
-    // L. 註冊、後台管理與知識庫治理 (支援 v3 JSON / SQL 結構)
+    // L. 註冊、後台管理與知識庫治理
     // ==========================================
     window.handleRegisterSubmit = async function(e) {
       e.preventDefault();
@@ -2808,7 +2802,6 @@ ${stepsText}
       }
     };
 
-    // 支援匯入 sage_kb_rag_merged_v3.json 與 Excel
     window.handleSmartKbUpload = async function(event) {
       if (!supabaseClient) {
         alert("資料庫連線尚未就緒，請重新整理頁面後再試。");
@@ -3093,6 +3086,9 @@ ${stepsText}
       window.fetchKbFromSupabase();
     };
 
+    // ==========================================
+    // M. 多模態視覺照片上傳與自動辨識錯誤碼 (Phase 2 核心)
+    // ==========================================
     window.triggerCameraUpload = function() {
       const input = document.getElementById('cameraInput');
       if (input) input.click();
@@ -3103,29 +3099,99 @@ ${stepsText}
       if (!file) return;
 
       const reader = new FileReader();
-      reader.onload = function(e) {
-        uploadedImageBase64 = e.target.result;
+      reader.onload = async function(e) {
+        const rawBase64 = e.target.result;
+        const compressedBase64 = await compressImageForVision(rawBase64, 1024, 0.82);
+        uploadedImageBase64 = compressedBase64;
+
         const imgMessage = `
           <div>
-            <p class="mb-1 text-xs font-medium">📷 已傳送現場照片：</p>
-            <img src="${uploadedImageBase64}" class="rounded-lg max-h-48 border border-white/20 shadow-md">
+            <p class="mb-1 text-xs font-medium">📷 已傳送現場故障照片：</p>
+            <img src="${compressedBase64}" class="rounded-lg max-h-48 border border-white/20 shadow-md">
           </div>
         `;
         window.appendUserChat('user', imgMessage);
-        window.logChatToSupabase('user', '[上傳了現場障礙照片]', true);
+        window.logChatToSupabase('user', '[上傳了現場障礙照片，啟動多模態視覺辨識]', true);
         turnCount++;
         window.updateTurnUI();
 
-        window.updateXiaoweiMood('step', '「小威收到現場照片囉，已為您附入報修佐證資料！」');
+        window.updateXiaoweiMood('thinking', '「小威正在透過視覺 AI 辨識畫面上的錯誤代碼與面板燈號...」');
 
-        setTimeout(() => {
-          const aiAnalysisText = "小威已接收到您上傳的設備照片！請問畫面或面板上顯示什麼錯誤訊息或燈號（例如讀卡機紅燈、印表機缺紙燈、藍屏代碼）？您可以直接輸入文字讓我比對知識庫，或點選下方直接送出報修單（照片紀錄將一併隨單通報工程師）！";
-          window.appendUserChat('ai', aiAnalysisText, true);
-          window.logChatToSupabase('ai', aiAnalysisText);
-          if (typeof window.speak === 'function') {
-            window.speak("已收到您的故障照片。請輸入畫面上的錯誤訊息，或直接點選建立報修單。");
+        // 呼叫 Supabase Edge Function 多模態視覺模型
+        const diagnosis = await callEdgeVisionDiagnose(compressedBase64, inquiryContext.originalProblem);
+
+        if (diagnosis && diagnosis.search_query) {
+          // 1. 將辨識出的設備類型與錯誤碼存入上下文，自動帶入報修單
+          if (diagnosis.device_type) {
+            inquiryContext.deviceOrSystem = diagnosis.device_type;
           }
-        }, 600);
+          if (diagnosis.error_code && diagnosis.error_code !== '無明確代碼') {
+            inquiryContext.errorCode = diagnosis.error_code;
+          }
+          const summaryStr = `${diagnosis.device_type}｜錯誤碼/燈號：${diagnosis.error_code}｜${diagnosis.error_text}`;
+          inquiryContext.visionDiagnosisText = summaryStr;
+
+          if (!inquiryContext.originalProblem) {
+            inquiryContext.originalProblem = `[照片辨識] ${diagnosis.search_query} (${diagnosis.error_code})`;
+          } else {
+            inquiryContext.supplementaryInfo.push(`[照片辨識] ${summaryStr}`);
+          }
+
+          window.updateXiaoweiMood('step', `「辨識完成！偵測到：${diagnosis.device_type}」`);
+
+          const visionCardHtml = `
+            <div class="bg-sky-50 border border-sky-300 rounded-xl p-2.5 text-xs text-slate-800 space-y-1">
+              <div class="font-bold text-indigo-950 flex items-center justify-between">
+                <span>🔍 AI 視覺辨識診斷結果</span>
+                <span class="text-[10px] bg-indigo-100 text-indigo-800 px-1.5 py-0.2 rounded">信心度: ${diagnosis.confidence}</span>
+              </div>
+              <div><b>📌 辨識設備：</b>${diagnosis.device_type}</div>
+              <div><b>⚠️ 錯誤碼/燈號：</b><span class="font-mono font-bold text-rose-700">${diagnosis.error_code}</span></div>
+              <div><b>📝 畫面訊息：</b>${diagnosis.error_text}</div>
+            </div>
+            <p class="text-[11px] text-slate-600 mt-1.5">小威正在根據上述辨識結果比對院內知識庫...</p>
+          `;
+
+          window.appendUserChat('ai', visionCardHtml, false);
+          window.logChatToSupabase('ai', `視覺辨識成功: ${summaryStr}`);
+          window.speak(`已辨識出${diagnosis.device_type}異常，錯誤代碼為${diagnosis.error_code}，正在為您比對知識庫。`);
+
+          // 2. 確保知識庫已載入後，自動串接 Grounded RAG 檢索與逐步排查
+          let activeSops = knowledgeBase;
+          if ((!activeSops || activeSops.length === 0) && supabaseClient) {
+            const { data: dbData } = await supabaseClient.from('kb_solutions').select('*').order('sop_id', { ascending: true });
+            if (dbData) {
+              activeSops = dbData;
+              knowledgeBase = dbData;
+              updateKbStatusBadges();
+            }
+          }
+
+          const combinedQuery = `${diagnosis.search_query} ${diagnosis.error_code !== '無明確代碼' ? diagnosis.error_code : ''} ${diagnosis.error_text}`;
+          const matches = findBestSopMatches(combinedQuery, activeSops);
+          inquiryContext.retrievedCandidates = matches.slice(0, 3);
+
+          setTimeout(() => {
+            const best = matches.length > 0 ? matches[0].item : null;
+            startStepByStepGuidance(best, combinedQuery);
+          }, 500);
+        } else {
+          // 若 Edge Function 尚未部署或圖片過於模糊無法辨識時的降級引導
+          window.updateXiaoweiMood('step', '「小威已收到照片！請補充畫面文字或直接報修喔！」');
+          const fallbackAnalysis = `
+            小威已收到您上傳的現場照片！目前視覺辨識閘道尚未回應或畫面較模糊，建議您：<br>
+            1. 直接在下方輸入畫面上的<b>錯誤代碼或面板燈號</b>，讓我為您比對知識庫。<br>
+            2. 或直接點擊下方按鈕送出報修單（現場照片紀錄將一併通報工程師）：<br>
+            <button onclick="openTicketModalPreview()" class="mt-2 w-full py-2 bg-indigo-700 hover:bg-indigo-800 text-white rounded-lg font-bold text-xs shadow transition">
+              🎫 帶著照片紀錄建立報修單
+            </button>
+          `;
+          window.appendUserChat('ai', fallbackAnalysis, false);
+          window.logChatToSupabase('ai', '照片已附入報修上下文（視覺閘道降級引導）');
+          window.speak("已收到您的故障照片。請輸入畫面上的錯誤訊息，或直接點選建立報修單。");
+        }
+
+        event.target.value = '';
       };
       reader.readAsDataURL(file);
     };
