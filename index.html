@@ -3324,7 +3324,7 @@ ${stepsText}
     };
 
     // ==========================================
-    // M. 現場照片上傳：先嘗試視覺辨識；若視覺未回應則請 Groq AI 依情境提供排查建議
+    // M. 現場照片上傳：嚴格防幻覺，僅在明確辨識出故障畫面或錯誤碼時才進入排查
     // ==========================================
     window.triggerCameraCapture = function() {
       const camInput = document.getElementById('cameraInput');
@@ -3335,6 +3335,25 @@ ${stepsText}
       if (galInput) galInput.click();
     };
     window.triggerCameraUpload = window.triggerGalleryUpload;
+
+    function isValidFaultDiagnosis(diag) {
+      if (!diag || typeof diag !== 'object') return false;
+      const dev = String(diag.device_type || '').trim();
+      const code = String(diag.error_code || '').trim();
+      const text = String(diag.error_text || '').trim();
+      const query = String(diag.search_query || '').trim();
+
+      if (!dev || !query) return false;
+      const nonFaultWords = ['非故障', '無故障', '日常物品', '一般物品', '生活照', '風景', '食物', '未知設備畫面', '無法辨識', '無關'];
+      if (nonFaultWords.some(w => dev.includes(w) || text.includes(w) || query.includes(w))) {
+        return false;
+      }
+      const hasCode = code && code !== '無明確代碼' && code !== '無';
+      const hasFaultSignal = /(錯誤|當機|藍屏|BSOD|紅燈|閃爍|缺紙|卡紙|逾時|失敗|中斷|無法|異常|代碼|停止|0x|Error|Fail|Jam|Offline)/i.test(
+        `${dev} ${code} ${text} ${query}`
+      );
+      return Boolean(hasCode || hasFaultSignal);
+    }
 
     window.handleImageSelected = function(event) {
       const file = event.target.files[0];
@@ -3348,24 +3367,34 @@ ${stepsText}
 
         const imgMessage = `
           <div>
-            <p class="mb-1 text-xs font-medium">📷 已傳送現場故障照片：</p>
+            <p class="mb-1 text-xs font-medium">📷 已傳送現場照片：</p>
             <img src="${compressedBase64}" class="rounded-lg max-h-48 border border-white/20 shadow-md">
           </div>
         `;
         window.appendUserChat('user', imgMessage);
-        window.logChatToSupabase('user', '[上傳了現場障礙照片]', true);
+        window.logChatToSupabase('user', '[上傳了現場照片]', true);
         turnCount++;
         window.updateTurnUI();
 
-        window.updateXiaoweiMood('thinking', '「小威正在分析照片並請 Groq AI 尋找排查方法...」');
+        window.updateXiaoweiMood('thinking', '「小威正在檢視照片中，確認是否有明確設備或錯誤畫面...」');
 
-        const diagnosis = await diagnoseImageWithEdge(compressedBase64, inquiryContext.originalProblem);
+        const diagnosis = await diagnoseImageWithEdge(compressedBase64, '');
 
-        if (diagnosis && diagnosis.search_query) {
+        if (isValidFaultDiagnosis(diagnosis)) {
           if (diagnosis.device_type) inquiryContext.deviceOrSystem = diagnosis.device_type;
-          if (diagnosis.error_code && diagnosis.error_code !== '無明確代碼') inquiryContext.errorCode = diagnosis.error_code;
+          if (diagnosis.error_code && diagnosis.error_code !== '無明確代碼') {
+            inquiryContext.errorCode = diagnosis.error_code;
+          }
           const summaryStr = `${diagnosis.device_type}｜錯誤碼/燈號：${diagnosis.error_code}｜${diagnosis.error_text}`;
           inquiryContext.visionDiagnosisText = summaryStr;
+
+          if (!inquiryContext.originalProblem) {
+            inquiryContext.originalProblem = `${diagnosis.device_type}（${diagnosis.error_code}）：${diagnosis.error_text}`;
+          } else {
+            inquiryContext.supplementaryInfo.push(summaryStr);
+          }
+
+          window.updateXiaoweiMood('step', `「已辨識出：${diagnosis.device_type}」`);
 
           const visionCardHtml = `
             <div class="bg-sky-50 border border-sky-300 rounded-xl p-2.5 text-xs text-slate-800 space-y-1">
@@ -3377,37 +3406,38 @@ ${stepsText}
           `;
           window.appendUserChat('ai', visionCardHtml, false);
 
+          let activeSops = knowledgeBase;
+          if ((!activeSops || activeSops.length === 0) && supabaseClient) {
+            const { data: dbData } = await supabaseClient.from('kb_solutions').select('*').order('sop_id', { ascending: true });
+            if (dbData) {
+              activeSops = dbData;
+              knowledgeBase = dbData;
+              updateKbStatusBadges();
+            }
+          }
+
           const combinedQuery = `${diagnosis.search_query} ${diagnosis.error_code !== '無明確代碼' ? diagnosis.error_code : ''} ${diagnosis.error_text}`;
-          const matches = findBestSopMatches(combinedQuery, knowledgeBase);
+          const matches = findBestSopMatches(combinedQuery, activeSops);
           inquiryContext.retrievedCandidates = matches.slice(0, 3);
           const best = matches.length > 0 ? matches[0].item : null;
           startStepByStepGuidance(best, combinedQuery);
         } else {
-          // 視覺閘道未回應或知識庫無索引時，一律呼叫 Groq 分析故障圖片情境並提供排查步驟
-          const hintText = inquiryContext.originalProblem
-            ? `使用者上傳了現場故障照片（如 Windows 藍屏 BSOD 或設備錯誤畫面），先前描述的問題是：「${inquiryContext.originalProblem}」`
-            : `使用者上傳了現場設備/螢幕故障照片（如 Windows 藍屏 BSOD、錯誤代碼畫面或設備異常），請針對常見藍屏當機、更新/驅動異常與設備重啟排查，提供清楚的故障排查步驟`;
+          // 未辨識出明確的 IT 設備故障或錯誤碼：嚴格不套用假設排查步驟，避免幻覺
+          inquiryContext.visionDiagnosisText = '已附現場照片（未辨識出明確設備錯誤碼或故障畫面）';
+          window.updateXiaoweiMood('idle', '「這張照片看不太出明確的設備錯誤訊息，請您用文字補充說明喔！」');
 
-          inquiryContext.visionDiagnosisText = '已附現場照片（已由 Groq 分析並提供排查步驟）';
-          const groqResult = await askGroqForTroubleshooting(hintText, inquiryContext.retrievedCandidates, false);
-          const steps = (groqResult && groqResult.text)
-            ? parseGroqGeneratedSteps(groqResult.text)
-            : buildSymptomTroubleshootingSteps(hintText);
-
-          const photoGroqSop = {
-            sop_id: 'GROQ-PHOTO',
-            title: '照片故障情境排查',
-            status: 'AI建議',
-            urgency: inquiryContext.isMajorIncident ? 'P1' : 'P2',
-            escalate_dept: '維護工程組',
-            allow_self_resolve: true
-          };
-          inquiryContext.matchedSop = photoGroqSop;
-          activeGuidance = { sop: photoGroqSop, steps: steps, currentStepIndex: 0 };
-          const sourceText = groqResult?.source ? `（${groqResult.source}）` : '';
-          const intro = `小威收到您的照片囉！知識庫無直接對應索引，已為您分析並整理 <b>${steps.length} 項排查步驟</b>${sourceText}（照片會一併帶入報修單）：`;
-          window.appendUserChat('ai', intro);
-          setTimeout(() => presentCurrentStep(), 250);
+          const noFaultHtml = `
+            小威已收到您上傳的照片，但從畫面中<b>尚未辨識出明確的 IT 設備故障或錯誤代碼</b>。<br><br>
+            為避免誤判或提供不相關的排查步驟，請您：<br>
+            1. 在下方輸入<b>實際遇到的問題描述、設備名稱或畫面錯誤文字</b>；或<br>
+            2. 若需工程師協助，可直接點選下方按鈕建立報修單（照片將一併附入）：<br>
+            <button onclick="openTicketModalPreview()" class="mt-2 w-full py-2 bg-indigo-700 hover:bg-indigo-800 text-white rounded-lg font-bold text-xs shadow transition">
+              🎫 帶著照片建立報修單
+            </button>
+          `;
+          window.appendUserChat('ai', noFaultHtml, false);
+          window.logChatToSupabase('ai', '照片未辨識出明確故障畫面，已避免套用假設排查步驟並請使用者補充說明');
+          window.speak("這張照片尚未看出明確的設備錯誤訊息，請用文字補充說明，或直接建立報修單。");
         }
 
         event.target.value = '';
