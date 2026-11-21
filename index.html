@@ -795,22 +795,10 @@
     async function askGroqForTroubleshooting(queryText, candidates = [], isDef = false) {
       const hasRefs = Array.isArray(candidates) && candidates.length > 0;
       const refSummary = hasRefs
-        ? candidates.slice(0, 3).map((m, i) => `參考 ${i + 1} [${m.item.sop_id}] ${m.item.title}：${(m.item.safe_steps || '').slice(0, 260)}`).join('\n')
-        : '內部知識庫無直接相符條目，請依 IT 與醫療設備維運經驗提出安全排查步驟。';
+        ? candidates.slice(0, 5).map((m, i) => `SOP ${i + 1} [${m.item.sop_id}] ${m.item.title}（分類:${m.item.category || ''}）：${(m.item.safe_steps || '').slice(0, 320)}`).join('\n\n')
+        : '';
 
-      const systemPrompt = isDef
-        ? `你是親切活潑的 IT 維護小助手「小威」。請用繁體中文、通俗白話說明使用者詢問的名詞或概念，約 2~3 段，嚴格禁止輸出外部超連結。`
-        : `你是親切活潑的 IT 維護小助手「小威」。內部知識庫若無完全符合的答案，請運用你的 IT 維運與故障排查專業，為使用者提出安全、具體、可操作的解決步驟！
-
-【回答規範】：
-1. 繁體中文回答（台灣慣用 IT 與設備維護術語）。
-2. 列出 **3 至 4 個具體排查或解決步驟**，每個步驟務必獨立成行，並以「1. 」「2. 」「3. 」開頭。
-3. 步驟要安全、簡單（例如重啟程式/設備、檢查連線、確認權限或更新版本），不要叫一般使用者做危險的磁碟格式化或改 Registry。
-4. 嚴格禁止輸出任何外部網頁超連結。`;
-
-      const userPrompt = `使用者狀況／問題：${queryText}\n\n${refSummary}`;
-
-      // 優先嘗試 Edge Function (rag_chat)
+      // 優先透過 Supabase Edge Function (xiaowei-rag-gateway) 執行 kb_solutions/fts 檢索 + Context 組裝 + Groq 生成
       try {
         const res = await fetch(EDGE_GATEWAY_URL, {
           method: "POST",
@@ -821,55 +809,60 @@
           },
           body: JSON.stringify({
             mode: "rag_chat",
-            query: userPrompt,
-            candidates: (candidates || []).slice(0, 3).map(m => ({
+            session_id: currentSessionId,
+            role: currentUser?.role || "user",
+            query: queryText,
+            isDef: isDef,
+            candidates: (candidates || []).slice(0, 5).map(m => ({
               sop_id: m.item.sop_id,
               title: m.item.title,
-              status: m.item.status || '草稿待審',
+              category: m.item.category || '',
+              symptom: m.item.symptom || '',
+              keywords: m.item.keywords || [],
+              learned_keywords: m.item.learned_keywords || [],
+              status: m.item.status || '已審核',
+              followup_questions: m.item.followup_questions || '',
+              escalation: m.item.escalation || '',
+              escalate_dept: m.item.escalate_dept || '維護工程組',
+              urgency: m.item.urgency || 'P2',
               safe_steps: m.item.safe_steps || ''
-            })),
-            isDef: isDef
+            }))
           })
         });
         if (res.ok) {
           const data = await res.json();
+          const stepsArr = Array.isArray(data?.steps) && data.steps.length > 0
+            ? data.steps.map(s => String(s || '').trim()).filter(Boolean)
+            : [];
           const ans = data?.answer ? String(data.answer).trim() : '';
-          if (ans && !ans.includes('NO_MATCH')) {
-            return { text: ans, source: 'Edge Function + Groq' };
+          if (ans || stepsArr.length > 0) {
+            return {
+              text: ans || stepsArr.map((s, idx) => `${idx + 1}. ${s}`).join('\n'),
+              steps: stepsArr,
+              matched_sop_id: data?.matched_sop_id || 'RAG-CTX',
+              matched_sop: data?.matched_sop || null,
+              category: data?.category || '',
+              escalation: data?.escalation || '',
+              source: data?.model_used ? `RAG + ${data.model_used}` : 'Supabase RAG + Groq'
+            };
           }
         }
       } catch (e) {
-        console.warn("Edge Function 尚未就緒或連線中斷，改由 Groq 直連尋找解法:", e);
+        console.warn("Edge Function RAG 呼叫異常，改由本地檢索／備援步驟處理:", e);
       }
 
-      // 直接呼叫 Groq Cloud API (openai/gpt-oss-120b) 尋找解決方法
-      try {
-        const groqRes = await fetch(GROQ_DIRECT_URL, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${DEFAULT_GROQ_KEY}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            model: "openai/gpt-oss-120b",
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: userPrompt }
-            ],
-            temperature: 0.35,
-            max_tokens: 700
-          })
-        });
-
-        if (groqRes.ok) {
-          const data = await groqRes.json();
-          const ans = data.choices?.[0]?.message?.content ? String(data.choices[0].message.content).trim() : '';
-          if (ans) {
-            return { text: ans, source: 'Groq Llama-3.3-70B' };
-          }
+      // 若 Edge Function 暫時無法連線，組裝 Context 後依既有步驟或針對性排查指引處理
+      if (hasRefs && refSummary) {
+        const firstSteps = parseStepsToArray(candidates[0].item.safe_steps || '');
+        if (firstSteps.length > 0) {
+          return {
+            text: firstSteps.map((s, i) => `${i + 1}. ${s}`).join('\n'),
+            steps: firstSteps,
+            matched_sop_id: candidates[0].item.sop_id,
+            matched_sop: candidates[0].item,
+            source: 'kb_solutions Context'
+          };
         }
-      } catch (err) {
-        console.warn("Groq 直連例外:", err);
       }
 
       return null;
@@ -1944,13 +1937,16 @@
         score += calculateFuzzyScore(coreQ, coreTitle);
 
         let kwList = [];
-        if (Array.isArray(k.keywords)) {
-          kwList = k.keywords;
-        } else if (typeof k.keywords === 'string') {
-          kwList = k.keywords.split(/[,，、/ \t\n]+/);
-        } else if (k.keywords) {
-          kwList = [String(k.keywords)];
-        }
+        const rawSources = [k.keywords, k.learned_keywords];
+        rawSources.forEach(srcField => {
+          if (Array.isArray(srcField)) {
+            kwList = kwList.concat(srcField);
+          } else if (typeof srcField === 'string') {
+            kwList = kwList.concat(srcField.split(/[,，、/ \t\n]+/));
+          } else if (srcField) {
+            kwList.push(String(srcField));
+          }
+        });
 
         kwList.forEach(w => {
           if (!w) return;
@@ -2294,14 +2290,21 @@
           window.logChatToSupabase('ai', `Groq AI 解答: ${groqResult.text}`);
           window.speak("已透過 Groq AI 為您整理說明，請問是否解答您的疑問？");
         } else {
-          window.updateXiaoweiMood('step', '「Groq AI 找到排查方法囉！我們一步一步試試看！」');
-          const dynamicSteps = parseGroqGeneratedSteps(groqResult.text);
-          const groqSopObj = {
-            sop_id: 'GROQ-AI',
-            title: `Groq AI 排查：${inquiryContext.originalProblem.slice(0, 32)}`,
-            status: 'AI建議',
-            urgency: inquiryContext.isMajorIncident ? 'P1' : 'P2',
-            escalate_dept: '維護工程組',
+          window.updateXiaoweiMood('step', '「已依據知識庫與 AI 分析整理排查步驟，我們一步一步試試看！」');
+          const dynamicSteps = (Array.isArray(groqResult.steps) && groqResult.steps.length > 0)
+            ? groqResult.steps
+            : parseGroqGeneratedSteps(groqResult.text);
+          const matchedRefSop = groqResult.matched_sop && groqResult.matched_sop.sop_id
+            ? groqResult.matched_sop
+            : null;
+          const groqSopObj = matchedRefSop || {
+            sop_id: groqResult.matched_sop_id || 'RAG-CTX',
+            title: groqResult.category
+              ? `[${groqResult.category}] ${inquiryContext.originalProblem.slice(0, 28)}`
+              : `情境排查：${inquiryContext.originalProblem.slice(0, 32)}`,
+            status: matchedRefSop?.status || 'AI建議',
+            urgency: inquiryContext.isMajorIncident ? 'P1' : (matchedRefSop?.urgency || 'P2'),
+            escalate_dept: matchedRefSop?.escalate_dept || '維護工程組',
             allow_self_resolve: true
           };
 
@@ -3410,7 +3413,7 @@ ${stepsText}
         }
       }
 
-      // 3. 若帳號無視覺模型權限，直接呼叫 Groq 文字模型 (openai/gpt-oss-120b) 針對上傳圖片情境分析並提供排查步驟（免輸入文字）
+      // 3. 若帳號無視覺模型權限，直接呼叫 Groq 文字模型 (llama-3.3-70b-versatile) 針對上傳圖片情境分析並提供排查步驟（免輸入文字）
       try {
         const textRes = await fetch(GROQ_DIRECT_URL, {
           method: "POST",
@@ -3419,7 +3422,7 @@ ${stepsText}
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            model: "openai/gpt-oss-120b",
+            model: "llama-3.3-70b-versatile",
             messages: [
               {
                 role: "system",
@@ -3440,7 +3443,7 @@ ${stepsText}
           const tData = await textRes.json();
           const ans = tData.choices?.[0]?.message?.content?.trim() || "";
           if (ans) {
-            return { diagnosis: null, stepsText: ans, source: 'Groq AI (openai/gpt-oss-120b)' };
+            return { diagnosis: null, stepsText: ans, source: 'Groq AI (llama-3.3-70b-versatile)' };
           }
         }
       } catch (err) {
