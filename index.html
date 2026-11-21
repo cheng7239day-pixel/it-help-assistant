@@ -3147,60 +3147,171 @@ ${stepsText}
       if (!supabaseClient) return;
       const c = document.getElementById('chatLogsContainer');
       if (!c) return;
-      c.innerHTML = '<div class="text-slate-400 p-3">載入對話 LOG 中...</div>';
+      c.innerHTML = '<div class="text-slate-400 p-3">載入對話歷程中...</div>';
 
       try {
         const { data, error } = await supabaseClient
           .from('chat_logs')
           .select('*')
           .order('created_at', { ascending: false })
-          .limit(100);
+          .limit(200);
 
         if (error) throw error;
         c.innerHTML = '';
+        const rows = data || [];
         const countBadge = document.getElementById('chatLogsCount');
-        if (countBadge) countBadge.innerText = (data || []).length;
 
-        if (!data || data.length === 0) {
+        if (rows.length === 0) {
+          if (countBadge) countBadge.innerText = '0';
           c.innerHTML = '<div class="text-slate-500 p-4 text-center">目前尚無對話歷程紀錄</div>';
           return;
         }
 
-        data.forEach(log => {
-          const item = document.createElement('div');
-          const isUser = log.message_role === 'user';
-          item.className = `p-2.5 rounded-xl border text-[11px] ${isUser ? 'bg-indigo-950/60 border-indigo-700/60' : 'bg-slate-800 border-slate-700'}`;
-          
-          let adminActionBtns = '';
-          if (isUser && log.message_content && !log.message_content.startsWith('[')) {
-            const escapedMsg = log.message_content.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-            adminActionBtns = `
-              <div class="mt-1.5 pt-1.5 border-t border-indigo-800/60 flex items-center justify-end space-x-2">
-                <span class="text-[10px] text-indigo-300">💡 知識自主沉澱：</span>
-                <button onclick="promptBindKeywordToExistingSop('${escapedMsg}')" class="px-2 py-0.5 bg-indigo-700 hover:bg-indigo-600 text-white rounded text-[10px] font-medium">
-                  ➕ 加入現有 SOP 關鍵字
-                </button>
-                <button onclick="openEditSopModal(null, '${escapedMsg}')" class="px-2 py-0.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-[10px] font-medium">
-                  📝 沉澱為新 SOP
-                </button>
+        // 依 session_id 或同一使用者 15 分鐘內連續互動合併為單次「完整諮詢卡片」
+        const sessionsMap = new Map();
+        const sortedAsc = [...rows].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+        let fallbackGroupIndex = 0;
+        let lastUserKey = '';
+        let lastTimeMs = 0;
+
+        sortedAsc.forEach((log) => {
+          const tMs = new Date(log.created_at).getTime() || 0;
+          const userKey = `${log.user_email || log.user_name || 'guest'}|${log.company || ''}|${log.jurisdiction || ''}`;
+          let groupKey = log.session_id ? String(log.session_id) : '';
+
+          if (!groupKey) {
+            if (userKey !== lastUserKey || (tMs - lastTimeMs > 15 * 60 * 1000)) {
+              fallbackGroupIndex++;
+            }
+            groupKey = `AUTO-${userKey}-${fallbackGroupIndex}`;
+          }
+          lastUserKey = userKey;
+          lastTimeMs = tMs;
+
+          if (!sessionsMap.has(groupKey)) {
+            sessionsMap.set(groupKey, {
+              sessionId: groupKey,
+              userName: log.user_name || '訪客',
+              company: log.company || '',
+              jurisdiction: log.jurisdiction || '',
+              startTime: log.created_at,
+              endTime: log.created_at,
+              messages: []
+            });
+          }
+          const grp = sessionsMap.get(groupKey);
+          grp.endTime = log.created_at;
+          grp.messages.push(log);
+        });
+
+        const groupedSessions = Array.from(sessionsMap.values()).sort(
+          (a, b) => new Date(b.endTime) - new Date(a.endTime)
+        );
+        if (countBadge) countBadge.innerText = groupedSessions.length;
+
+        groupedSessions.forEach((sess, idx) => {
+          const userMsgs = sess.messages.filter(m => m.message_role === 'user');
+          const aiMsgs = sess.messages.filter(m => m.message_role !== 'user');
+          const primaryQuestion = userMsgs.find(m => m.message_content && !m.message_content.startsWith('['))?.message_content
+            || userMsgs[0]?.message_content
+            || '（僅系統／引導紀錄）';
+
+          const lastAiText = aiMsgs[aiMsgs.length - 1]?.message_content || '';
+          const isResolved = lastAiText.includes('[自解成功]') || lastAiText.includes('已排除解決');
+          const hasTicket = lastAiText.includes('報修案件建立完成') || lastAiText.includes('報修確認表單');
+
+          const statusBadge = isResolved
+            ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-900/80 text-emerald-300 border border-emerald-500/60">✅ 已自解排除</span>`
+            : (hasTicket
+              ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-900/80 text-rose-200 border border-rose-500/60">🎫 已轉報修/建單</span>`
+              : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-900/70 text-amber-200 border border-amber-500/50">💬 排查進行中</span>`);
+
+          const cleanSteps = [];
+          let resolvedSummary = '';
+          aiMsgs.forEach(m => {
+            const txt = String(m.message_content || '').trim();
+            if (!txt || txt === '收到，已記錄未能排除。我們嘗試進行下一項測試：') return;
+            if (txt.startsWith('[自解成功]')) {
+              resolvedSummary = txt.replace(/^\[自解成功\](\[SOP:[^\]]+\])?\s*/, '');
+            } else {
+              cleanSteps.push({ time: m.created_at, text: txt });
+            }
+          });
+
+          const escapedQ = primaryQuestion.replace(/'/g, "\'").replace(/"/g, '&quot;');
+          const cardId = `chat-sess-detail-${idx}`;
+
+          const learnBarHtml = primaryQuestion && !primaryQuestion.startsWith('[')
+            ? `<div class="mt-2 pt-2 border-t border-slate-700/80 flex flex-wrap items-center justify-between gap-2">
+                 <span class="text-[10px] text-indigo-300">💡 知識自主學習沉澱：</span>
+                 <div class="flex items-center gap-1.5">
+                   <button onclick="promptBindKeywordToExistingSop('${escapedQ}')" class="px-2 py-0.5 bg-indigo-700 hover:bg-indigo-600 text-white rounded text-[10px] font-medium transition">
+                     ➕ 加入現有 SOP 關鍵字
+                   </button>
+                   <button onclick="openEditSopModal(null, '${escapedQ}')" class="px-2 py-0.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-[10px] font-medium transition">
+                     📝 沉澱為新 SOP
+                   </button>
+                 </div>
+               </div>`
+            : '';
+
+          const detailRowsHtml = sess.messages.map(m => {
+            const isU = m.message_role === 'user';
+            return `
+              <div class="flex items-start gap-2 py-1 border-b border-slate-800/80 last:border-b-0 text-[11px]">
+                <span class="shrink-0 font-bold ${isU ? 'text-sky-300' : 'text-amber-400'}">${isU ? '👤 使用者' : '👦 小威'}</span>
+                <span class="flex-1 text-slate-200 whitespace-pre-line leading-relaxed">${m.message_content}</span>
+                <span class="shrink-0 font-mono text-[10px] text-slate-500">${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})}</span>
               </div>
             `;
-          }
+          }).join('');
 
-          item.innerHTML = `
-            <div class="flex justify-between items-center mb-1 text-[10px] text-slate-400">
-              <span class="font-bold ${isUser ? 'text-sky-300' : 'text-amber-400'}">
-                ${isUser ? '👤 使用者' : '👦 小威'}: ${log.user_name || '訪客'} (${log.company || ''} ${log.jurisdiction || ''})
-              </span>
-              <span class="font-mono">${new Date(log.created_at).toLocaleString()}</span>
+          const card = document.createElement('div');
+          card.className = "p-3.5 bg-slate-800/95 border border-slate-700 rounded-xl space-y-2 hover:border-slate-600 transition";
+          card.innerHTML = `
+            <div class="flex flex-wrap justify-between items-start gap-2">
+              <div class="space-y-0.5">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-xs font-bold text-white">📌 ${primaryQuestion}</span>
+                  ${statusBadge}
+                </div>
+                <div class="text-[10px] text-slate-400">
+                  👤 ${sess.userName}（${sess.company || '未填公司'} ${sess.jurisdiction ? `· ${sess.jurisdiction}` : ''}）
+                  · 共 ${sess.messages.length} 則互動（排查步驟 ${cleanSteps.length} 則）
+                </div>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <span class="font-mono text-[10px] text-slate-400">${new Date(sess.endTime).toLocaleString()}</span>
+                <button onclick="document.getElementById('${cardId}').classList.toggle('hidden')" class="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-sky-300 rounded text-[10px] font-medium transition">
+                  展開完整對話 (${sess.messages.length})
+                </button>
+              </div>
             </div>
-            <div class="text-slate-200 whitespace-pre-line leading-relaxed">${log.message_content}</div>
-            ${adminActionBtns}
+
+            ${cleanSteps.length > 0 ? `
+              <div class="bg-slate-900/75 border border-slate-700/70 rounded-lg p-2 space-y-1 text-[11px]">
+                <div class="text-[10px] font-bold text-slate-400">🛠️ 排查歷程摘要：</div>
+                ${cleanSteps.slice(-3).map(st => `<div class="text-slate-300 leading-snug">• ${st.text}</div>`).join('')}
+              </div>
+            ` : ''}
+
+            ${resolvedSummary ? `
+              <div class="bg-emerald-950/50 border border-emerald-700/50 rounded-lg px-2.5 py-1.5 text-[11px] text-emerald-200">
+                ✅ <b>處理結果：</b>${resolvedSummary}
+              </div>
+            ` : ''}
+
+            <div id="${cardId}" class="hidden bg-slate-950/80 border border-slate-800 rounded-lg p-2.5 mt-1.5 space-y-1">
+              ${detailRowsHtml}
+            </div>
+
+            ${learnBarHtml}
           `;
-          c.appendChild(item);
+          c.appendChild(card);
         });
       } catch (err) {
-        c.innerHTML = `<div class="text-rose-400 p-3">載入 chat_logs 表失敗：${err.message}</div>`;
+        c.innerHTML = `<div class="text-rose-400 p-3">載入 chat_logs 失敗：${err.message}</div>`;
       }
     };
 
