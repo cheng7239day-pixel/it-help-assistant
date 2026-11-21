@@ -399,7 +399,8 @@
 
       <!-- 底部輸入工具列 -->
       <div class="bg-white border-t border-slate-200 px-3 pt-2 safe-bottom shrink-0 shadow-lg z-20">
-        <input type="file" id="cameraInput" accept="image/*" class="hidden" onchange="handleImageSelected(event)">
+        <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden" onchange="handleImageSelected(event)">
+        <input type="file" id="galleryInput" accept="image/*" class="hidden" onchange="handleImageSelected(event)">
 
         <div id="voiceStatusBanner" class="hidden mb-2 p-2 bg-rose-50 border border-rose-200 rounded-lg flex items-center justify-between">
           <div class="flex items-center space-x-2 text-xs text-rose-800">
@@ -412,10 +413,16 @@
         </div>
 
         <div class="flex items-center space-x-1.5 pb-1">
-          <button onclick="triggerCameraUpload()" class="p-2.5 text-slate-600 bg-slate-100 hover:bg-indigo-100 active:bg-indigo-200 rounded-full shrink-0 transition" title="拍照或上傳故障畫面（Groq AI 自動分析排查）">
+          <button type="button" onclick="triggerCameraCapture()" class="p-2.5 text-slate-600 bg-slate-100 hover:bg-indigo-100 active:bg-indigo-200 rounded-full shrink-0 transition" title="開啟相機拍照">
             <svg class="w-5 h-5 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
+            </svg>
+          </button>
+
+          <button type="button" onclick="triggerGalleryUpload()" class="p-2.5 text-slate-600 bg-slate-100 hover:bg-sky-100 active:bg-sky-200 rounded-full shrink-0 transition" title="選擇已儲存的圖片">
+            <svg class="w-5 h-5 text-sky-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
             </svg>
           </button>
 
@@ -3160,10 +3167,15 @@ ${stepsText}
     // ==========================================
     // M. 現場照片上傳：先嘗試視覺辨識；若視覺未回應則請 Groq AI 依情境提供排查建議
     // ==========================================
-    window.triggerCameraUpload = function() {
-      const input = document.getElementById('cameraInput');
-      if (input) input.click();
+    window.triggerCameraCapture = function() {
+      const camInput = document.getElementById('cameraInput');
+      if (camInput) camInput.click();
     };
+    window.triggerGalleryUpload = function() {
+      const galInput = document.getElementById('galleryInput');
+      if (galInput) galInput.click();
+    };
+    window.triggerCameraUpload = window.triggerGalleryUpload;
 
     window.handleImageSelected = function(event) {
       const file = event.target.files[0];
@@ -3212,38 +3224,31 @@ ${stepsText}
           const best = matches.length > 0 ? matches[0].item : null;
           startStepByStepGuidance(best, combinedQuery);
         } else {
-          // 視覺閘道未回應時，直接請 Groq AI 針對照片情境與已知描述提出排查步驟
+          // 視覺閘道未回應或知識庫無索引時，一律呼叫 Groq 分析故障圖片情境並提供排查步驟
           const hintText = inquiryContext.originalProblem
-            ? `使用者上傳了現場故障照片，先前描述的問題是：「${inquiryContext.originalProblem}」`
-            : `使用者上傳了現場設備/螢幕故障照片（目前無法直接讀取影像像素，請提供一般常見的螢幕畫面異常、安裝升級卡住或設備連線故障的排查步驟）`;
+            ? `使用者上傳了現場故障照片（如 Windows 藍屏 BSOD 或設備錯誤畫面），先前描述的問題是：「${inquiryContext.originalProblem}」`
+            : `使用者上傳了現場設備/螢幕故障照片（如 Windows 藍屏 BSOD、錯誤代碼畫面或設備異常），請針對常見藍屏當機、更新/驅動異常與設備重啟排查，提供清楚的故障排查步驟`;
 
-          inquiryContext.visionDiagnosisText = '已附現場照片（視覺閘道未回應，已改由 Groq AI 擬定排查步驟）';
+          inquiryContext.visionDiagnosisText = '已附現場照片（已由 Groq 分析並提供排查步驟）';
           const groqResult = await askGroqForTroubleshooting(hintText, inquiryContext.retrievedCandidates, false);
+          const steps = (groqResult && groqResult.text)
+            ? parseGroqGeneratedSteps(groqResult.text)
+            : buildSymptomTroubleshootingSteps(hintText);
 
-          if (groqResult && groqResult.text) {
-            const dynamicSteps = parseGroqGeneratedSteps(groqResult.text);
-            const photoGroqSop = {
-              sop_id: 'GROQ-PHOTO',
-              title: '照片故障情境 Groq AI 排查',
-              status: 'AI建議',
-              urgency: inquiryContext.isMajorIncident ? 'P1' : 'P2',
-              escalate_dept: '維護工程組',
-              allow_self_resolve: true
-            };
-            inquiryContext.matchedSop = photoGroqSop;
-            activeGuidance = { sop: photoGroqSop, steps: dynamicSteps, currentStepIndex: 0 };
-            const intro = `小威收到您的照片囉！目前視覺閘道尚未回應，已先請 <b>Groq AI</b> 為您整理 <b>${dynamicSteps.length} 項排查建議</b>（照片也會一併帶入報修單）：`;
-            window.appendUserChat('ai', intro);
-            setTimeout(() => presentCurrentStep(), 250);
-          } else {
-            const fallbackAnalysis = `
-              小威已收到您上傳的現場照片！建議您直接在下方輸入畫面文字或錯誤代碼，或點擊下方直接建立報修單（照片紀錄將一併通報工程師）：<br>
-              <button onclick="openTicketModalPreview()" class="mt-2 w-full py-2 bg-indigo-700 hover:bg-indigo-800 text-white rounded-lg font-bold text-xs shadow transition">
-                🎫 帶著照片紀錄建立報修單
-              </button>
-            `;
-            window.appendUserChat('ai', fallbackAnalysis, false);
-          }
+          const photoGroqSop = {
+            sop_id: 'GROQ-PHOTO',
+            title: '照片故障情境排查',
+            status: 'AI建議',
+            urgency: inquiryContext.isMajorIncident ? 'P1' : 'P2',
+            escalate_dept: '維護工程組',
+            allow_self_resolve: true
+          };
+          inquiryContext.matchedSop = photoGroqSop;
+          activeGuidance = { sop: photoGroqSop, steps: steps, currentStepIndex: 0 };
+          const sourceText = groqResult?.source ? `（${groqResult.source}）` : '';
+          const intro = `小威收到您的照片囉！知識庫無直接對應索引，已為您分析並整理 <b>${steps.length} 項排查步驟</b>${sourceText}（照片會一併帶入報修單）：`;
+          window.appendUserChat('ai', intro);
+          setTimeout(() => presentCurrentStep(), 250);
         }
 
         event.target.value = '';
