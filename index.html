@@ -108,7 +108,7 @@
     }
   </style>
 </head>
-<body class="bg-slate-900 text-slate-100 h-screen w-screen flex flex-col overflow-hidden relative">
+<body class="bg-slate-900 text-slate-100 h-[100dvh] w-full flex flex-col overflow-hidden relative" style="height: 100dvh; max-height: 100dvh;">
 
   <!-- 頂部通用導覽列 -->
   <header class="bg-[#10183d] border-b border-indigo-950 px-3.5 py-2 flex items-center justify-between shrink-0 shadow-md z-30">
@@ -126,7 +126,7 @@
     </div>
 
     <div class="flex items-center space-x-1.5">
-      <span id="edgeGatewayBadge" class="text-[9px] bg-indigo-900/90 text-sky-200 border border-indigo-400/50 px-2 py-0.5 rounded-full flex items-center gap-1">
+      <span id="edgeGatewayBadge" class="hidden sm:flex text-[9px] bg-indigo-900/90 text-sky-200 border border-indigo-400/50 px-2 py-0.5 rounded-full items-center gap-1">
         <span>⚡</span> RAG + Groq AI
       </span>
       <span id="supabaseStatusBadge" class="text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-600/50 px-2 py-0.5 rounded-full">
@@ -142,7 +142,7 @@
   </header>
 
   <!-- 主內容工作區 -->
-  <main class="flex-1 overflow-hidden relative">
+  <main class="flex-1 min-h-0 overflow-hidden relative flex flex-col">
 
     <!-- 1. 訪客介面：登入 / 註冊視窗 -->
     <section id="authSection" class="absolute inset-0 flex items-center justify-center p-3 sm:p-4 bg-slate-950 overflow-y-auto z-40">
@@ -250,7 +250,7 @@
     </section>
 
     <!-- 2. 使用者介面：交談視窗內走動的小男孩（小威）工作區 -->
-    <section id="userSection" class="hidden absolute inset-0 flex flex-col bg-white text-slate-800 overflow-hidden">
+    <section id="userSection" class="hidden flex-1 min-h-0 w-full h-full flex flex-col bg-white text-slate-800 overflow-hidden relative">
       
       <!-- 頂部排查狀態條 -->
       <div class="bg-indigo-900/10 border-b border-indigo-900/20 px-3.5 py-1.5 flex justify-between items-center text-xs shrink-0 z-20">
@@ -275,11 +275,11 @@
       </div>
 
       <!-- 對話串流主區域 -->
-      <div class="flex-1 relative overflow-hidden flex flex-col">
+      <div class="flex-1 min-h-0 relative overflow-hidden flex flex-col">
         <div id="chatArea" class="flex-1 p-3.5 space-y-3.5 overflow-y-auto chat-bg no-scrollbar z-0 pb-36"></div>
 
         <!-- 小威動態互動台：在交談視窗內走動、肢體動作與表情變化 -->
-        <div id="xiaoweiWalkerStage" class="absolute bottom-1 right-2 sm:right-6 pointer-events-auto z-10 select-none flex flex-col items-center">
+        <div id="xiaoweiWalkerStage" class="absolute bottom-2 right-2 sm:right-6 pointer-events-none z-10 select-none flex flex-col items-center">
           
           <!-- 小威頭頂情緒微對話氣泡 -->
           <div id="xiaoweiSpeechBubble" onclick="triggerXiaoweiCheer()" class="mb-1 bg-white/95 text-slate-800 border border-amber-300/80 px-2.5 py-1 rounded-xl shadow-md text-[11px] font-medium max-w-[210px] text-center cursor-pointer hover:scale-105 transition">
@@ -287,7 +287,7 @@
           </div>
 
           <!-- 小男孩實體走動容器 -->
-          <div class="boy-walker-stage cursor-pointer" id="boyWalkerEl" onclick="triggerXiaoweiCheer()" title="點點小威！">
+          <div class="boy-walker-stage cursor-pointer pointer-events-auto" id="boyWalkerEl" onclick="triggerXiaoweiCheer()" title="點點小威！">
             <div id="boyBreatheEl" class="boy-breathe-body relative w-24 h-32 sm:w-28 sm:h-36">
               
               <svg viewBox="0 0 160 215" class="w-full h-full drop-shadow-xl" id="boyInteractiveSvg">
@@ -397,8 +397,8 @@
 
       </div>
 
-      <!-- 底部輸入工具列 -->
-      <div class="bg-white border-t border-slate-200 px-3 pt-2 safe-bottom shrink-0 shadow-lg z-20">
+      <!-- 底部輸入工具列 (手機版固定置底、支援相機拍照、相簿選圖與文字輸入) -->
+      <div id="mobileBottomToolbar" class="bg-white border-t border-slate-200 px-2.5 pt-2 safe-bottom shrink-0 shadow-[0_-4px_12px_rgba(0,0,0,0.08)] z-40 w-full">
         <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden" onchange="handleImageSelected(event)">
         <input type="file" id="galleryInput" accept="image/*" class="hidden" onchange="handleImageSelected(event)">
 
@@ -875,7 +875,7 @@
       return null;
     }
 
-    // 2. 照片視覺辨識（優先走 Edge Function vision_diagnose；若尚未部署則提示或用文字比對）
+    // 2. 照片視覺辨識（優先走 Edge Function vision_diagnose；若回傳 502 則直接呼叫 Groq Vision 模型判讀圖片）
     async function diagnoseImageWithEdge(compressedBase64, userHint = '') {
       try {
         const res = await fetch(EDGE_GATEWAY_URL, {
@@ -898,7 +898,53 @@
           }
         }
       } catch (e) {
-        console.warn("視覺閘道呼叫異常:", e);
+        console.warn("視覺閘道呼叫異常，改由 Groq Vision 直連辨識:", e);
+      }
+
+      // Edge Function 502 時改用 Groq Vision (llama-4-scout-17b-16e-instruct) 直接判讀照片內容
+      const visionPrompt = `你是專業 IT 維護工程師助手「小威」。請仔細判讀這張設備或螢幕故障照片，嚴格只輸出純 JSON（不要 markdown 標記）：
+{"device_type":"設備或畫面類型(如 Windows 藍屏 BSOD、印表機、讀卡機、HIS視窗)","error_code":"畫面上的錯誤代碼或停止代碼(如 CRITICAL_PROCESS_DIED、0x0000007B；無則填無明確代碼)","error_text":"畫面關鍵錯誤訊息繁體中文摘要(60字內)","search_query":"適合檢索知識庫的精準關鍵短語","confidence":"high"}
+使用者補充：${userHint || "無"}`;
+
+      for (const vModel of ["meta-llama/llama-4-scout-17b-16e-instruct", "meta-llama/llama-4-maverick-17b-128e-instruct"]) {
+        try {
+          const gRes = await fetch(GROQ_DIRECT_URL, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${DEFAULT_GROQ_KEY}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              model: vModel,
+              messages: [{
+                role: "user",
+                content: [
+                  { type: "text", text: visionPrompt },
+                  { type: "image_url", image_url: { url: compressedBase64 } }
+                ]
+              }],
+              temperature: 0.1,
+              max_tokens: 450
+            })
+          });
+          if (gRes.ok) {
+            const gData = await gRes.json();
+            const raw = gData.choices?.[0]?.message?.content?.trim() || "";
+            const cleaned = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+            const parsed = JSON.parse(cleaned.match(/\{[\s\S]*\}/)?.[0] || cleaned);
+            if (parsed && parsed.search_query) {
+              return {
+                device_type: parsed.device_type || "設備錯誤畫面",
+                error_code: parsed.error_code || "無明確代碼",
+                error_text: parsed.error_text || raw.slice(0, 80),
+                search_query: parsed.search_query,
+                confidence: parsed.confidence || "high"
+              };
+            }
+          }
+        } catch (err) {
+          console.warn(`Groq Vision [${vModel}] 呼叫異常:`, err);
+        }
       }
       return null;
     }
