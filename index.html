@@ -906,7 +906,7 @@
 {"device_type":"設備或畫面類型(如 Windows 藍屏 BSOD、印表機、讀卡機、HIS視窗)","error_code":"畫面上的錯誤代碼或停止代碼(如 CRITICAL_PROCESS_DIED、0x0000007B；無則填無明確代碼)","error_text":"畫面關鍵錯誤訊息繁體中文摘要(60字內)","search_query":"適合檢索知識庫的精準關鍵短語","confidence":"high"}
 使用者補充：${userHint || "無"}`;
 
-      for (const vModel of ["meta-llama/llama-4-scout-17b-16e-instruct", "meta-llama/llama-4-maverick-17b-128e-instruct"]) {
+      for (const vModel of []) {
         try {
           const gRes = await fetch(GROQ_DIRECT_URL, {
             method: "POST",
