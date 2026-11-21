@@ -842,7 +842,7 @@
         console.warn("Edge Function 尚未就緒或連線中斷，改由 Groq 直連尋找解法:", e);
       }
 
-      // 直接呼叫 Groq Cloud API (llama-3.3-70b-versatile) 尋找解決方法
+      // 直接呼叫 Groq Cloud API (openai/gpt-oss-120b) 尋找解決方法
       try {
         const groqRes = await fetch(GROQ_DIRECT_URL, {
           method: "POST",
@@ -851,7 +851,7 @@
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            model: "llama-3.3-70b-versatile",
+            model: "openai/gpt-oss-120b",
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt }
@@ -3410,7 +3410,7 @@ ${stepsText}
         }
       }
 
-      // 3. 若帳號無視覺模型權限，直接呼叫 Groq 文字模型 (llama-3.3-70b-versatile) 針對上傳圖片情境分析並提供排查步驟（免輸入文字）
+      // 3. 若帳號無視覺模型權限，直接呼叫 Groq 文字模型 (openai/gpt-oss-120b) 針對上傳圖片情境分析並提供排查步驟（免輸入文字）
       try {
         const textRes = await fetch(GROQ_DIRECT_URL, {
           method: "POST",
@@ -3419,7 +3419,7 @@ ${stepsText}
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            model: "llama-3.3-70b-versatile",
+            model: "openai/gpt-oss-120b",
             messages: [
               {
                 role: "system",
@@ -3440,7 +3440,7 @@ ${stepsText}
           const tData = await textRes.json();
           const ans = tData.choices?.[0]?.message?.content?.trim() || "";
           if (ans) {
-            return { diagnosis: null, stepsText: ans, source: 'Groq AI (llama-3.3-70b-versatile)' };
+            return { diagnosis: null, stepsText: ans, source: 'Groq AI (openai/gpt-oss-120b)' };
           }
         }
       } catch (err) {
