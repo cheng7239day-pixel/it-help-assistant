@@ -2317,23 +2317,25 @@
           setTimeout(() => presentCurrentStep(), 300);
         }
       } else {
-        // 3. 若 Groq 連線異常，提供基本安全急救步驟並可隨時建單
-        window.updateXiaoweiMood('step', '「小威為您提供基本安全排查步驟！」');
-        const fallbackSteps = [
-          "先確認設備電源與網路/訊號線是否接妥，必要時重新啟動應用程式或設備。",
-          "確認畫面上的錯誤訊息或代碼，並測試另一台設備或不同網路環境是否正常。",
-          "若仍無法排除，請直接點擊下方「直接報修」由工程師協助處理。"
-        ];
+        // 3. 若 Groq 外部請求被擋或逾時，依使用者問題內容產生針對性排查步驟（避免千篇一律）
+        window.updateXiaoweiMood('step', '「小威依您的問題內容整理針對性排查步驟！」');
+        const symptomSteps = typeof buildSymptomTroubleshootingSteps === 'function'
+          ? buildSymptomTroubleshootingSteps(combinedQuery)
+          : [
+              `針對「${combinedQuery.slice(0, 28)}」，先檢查相關主機、IP/網路連線與系統服務狀態。`,
+              "確認是否有重複名稱、權限限制或阻擋連線的設定，並重新啟動相關服務或設備測試。",
+              "若仍無法排除，請點擊「直接報修」將完整訊息與測試紀錄交由工程師處理。"
+            ];
         const fbSop = {
-          sop_id: 'GROQ-FALLBACK',
-          title: '基本安全排查指引',
-          status: 'AI建議',
+          sop_id: 'GROQ-SYMPTOM',
+          title: `情境排查：${inquiryContext.originalProblem.slice(0, 24) || '問題診斷'}`,
+          status: '情境分析',
           urgency: inquiryContext.isMajorIncident ? 'P1' : 'P2',
           escalate_dept: '維護工程組',
           allow_self_resolve: true
         };
         inquiryContext.matchedSop = fbSop;
-        activeGuidance = { sop: fbSop, steps: fallbackSteps, currentStepIndex: 0 };
+        activeGuidance = { sop: fbSop, steps: symptomSteps, currentStepIndex: 0 };
         presentCurrentStep();
       }
     }
