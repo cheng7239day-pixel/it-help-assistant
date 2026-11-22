@@ -279,7 +279,7 @@
         <div id="chatArea" class="flex-1 p-3.5 space-y-3.5 overflow-y-auto chat-bg no-scrollbar z-0 pb-36"></div>
 
         <!-- 小威動態互動台：在交談視窗內走動、肢體動作與表情變化 -->
-        <div id="xiaoweiWalkerStage" class="absolute bottom-2 right-2 sm:right-6 pointer-events-none z-10 select-none flex flex-col items-center">
+        <div id="xiaoweiWalkerStage" class="fixed bottom-16 right-2 sm:right-6 pointer-events-none z-10 select-none flex flex-col items-center opacity-90 scale-75 sm:scale-95 origin-bottom-right">
           
           <!-- 小威頭頂情緒微對話氣泡 -->
           <div id="xiaoweiSpeechBubble" onclick="triggerXiaoweiCheer()" class="mb-1 bg-white/95 text-slate-800 border border-amber-300/80 px-2.5 py-1 rounded-xl shadow-md text-[11px] font-medium max-w-[210px] text-center cursor-pointer hover:scale-105 transition">
@@ -851,7 +851,50 @@
         console.warn("Edge Function RAG 呼叫異常，改由本地檢索／備援步驟處理:", e);
       }
 
-      // 若 Edge Function 暫時無法連線，組裝 Context 後依既有步驟或針對性排查指引處理
+      // 若 Edge Function 暫時無法連線，直接呼叫 Groq API (openai/gpt-oss-120b / openai/gpt-oss-20b) 進行 RAG 推理
+      for (const directModel of ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]) {
+        try {
+          const gRes = await fetch(GROQ_DIRECT_URL, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${DEFAULT_GROQ_KEY}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              model: directModel,
+              messages: [
+                {
+                  role: "system",
+                  content: "你是專業 IT 維護小助手「小威」。請用繁體中文針對使用者的設備問題提供 3 個安全、具體、可操作的故障排查步驟（每步一行，以 1. 2. 3. 開頭）。嚴禁編造院內分機、網址或危險指令，也嚴禁輸出外部連結。"
+                },
+                {
+                  role: "user",
+                  content: hasRefs ? `問題：${queryText}\n\n參考知識庫：\n${refSummary}` : `問題：${queryText}`
+                }
+              ],
+              temperature: 0.25,
+              max_tokens: 650
+            })
+          });
+          if (gRes.ok) {
+            const gData = await gRes.json();
+            const ans = String(gData.choices?.[0]?.message?.content || "").trim();
+            if (ans) {
+              const parsedSteps = parseGroqGeneratedSteps(ans);
+              return {
+                text: ans,
+                steps: parsedSteps,
+                matched_sop_id: hasRefs ? candidates[0].item.sop_id : 'GROQ-DIRECT',
+                matched_sop: hasRefs ? candidates[0].item : null,
+                source: `Groq (${directModel})`
+              };
+            }
+          }
+        } catch (err) {
+          console.warn(`Groq 直連 [${directModel}] 異常:`, err);
+        }
+      }
+
       if (hasRefs && refSummary) {
         const firstSteps = parseStepsToArray(candidates[0].item.safe_steps || '');
         if (firstSteps.length > 0) {
@@ -1877,7 +1920,8 @@
       { key: '健保卡', synonyms: ['健保卡', 'ic卡', '晶片卡', '醫事卡', '醫事人員卡', '卡片', '插卡'] },
       { key: '讀卡機', synonyms: ['讀卡機', '卡機', '讀卡器', '插卡槽', '無法讀卡', '刷卡機'] },
       { key: '印表機', synonyms: ['印表機', '打印機', '出紙機', '雷射印表機', '標籤機', '條碼機', '斑馬機', '無法列印'] },
-      { key: '當機', synonyms: ['當機', '死當', '卡死', '卡住', '轉圈圈', '畫面凍結', '沒反應', '未回應', '無回應', '藍屏', '藍底白字', 'bsod', '黑屏'] },
+      { key: '螢幕沒畫面', synonyms: ['螢幕沒畫面', '螢幕無訊號', '黑屏', '黑畫面', '無畫面', 'no signal', '顯示器沒畫面'] },
+      { key: '當機', synonyms: ['當機', '死當', '卡死', '卡住', '轉圈圈', '畫面凍結', '沒反應', '未回應', '無回應', '藍屏', '藍底白字', 'bsod'] },
       { key: '網路', synonyms: ['網路', '無法上網', '斷網', '連不上', '沒網', 'wifi', 'wi-fi', '網路線', '網點', 'vpn', '連線異常'] },
       { key: 'HIS', synonyms: ['his', '醫療資訊系統', '門診系統', '看診系統', '醫令', '批價系統', '掛號系統', '病歷系統'] },
       { key: '密碼', synonyms: ['忘記密碼', '密碼過期', '帳號鎖定', '改密碼', '重設密碼', '無法登入', '登入失敗'] }
@@ -2390,10 +2434,52 @@
           setTimeout(() => {
             presentCurrentStep();
           }, 350);
+        } else if (!activeGuidance.isGroqFallback) {
+          // 知識庫既有 SOP 步驟皆未排除時，自動轉請 Groq AI 深度分析並提供進階排查步驟
+          const prevSopId = activeGuidance.sop?.sop_id || 'SOP';
+          const prevSopTitle = activeGuidance.sop?.title || inquiryContext.originalProblem;
+          window.updateXiaoweiMood('thinking', '「知識庫基本步驟尚未排除，小威正請 Groq AI 進一步尋找解決方法...」');
+          const escalateAiNotice = `知識庫 <b>[${prevSopId}]</b> 的基本步驟均未能排除，小威正為您轉請 <b>Groq AI</b> 針對「${inquiryContext.originalProblem}」尋找進階解決方法...`;
+          window.appendUserChat('ai', escalateAiNotice);
+          window.logChatToSupabase('ai', escalateAiNotice);
+
+          (async () => {
+            const deepQuery = `使用者問題：${inquiryContext.originalProblem}。已嘗試知識庫 [${prevSopId}] ${prevSopTitle} 的所有基本步驟但仍未排除（已測試：${inquiryContext.suggestedSteps.join('；')}）。請提供 3 個不同角度的進階排查或解決步驟。`;
+            const groqRes = await askGroqForTroubleshooting(deepQuery, inquiryContext.retrievedCandidates, false);
+            const extraSteps = (groqRes && Array.isArray(groqRes.steps) && groqRes.steps.length > 0)
+              ? groqRes.steps
+              : (groqRes && groqRes.text ? parseGroqGeneratedSteps(groqRes.text) : []);
+
+            if (extraSteps.length > 0) {
+              const aiSopObj = {
+                sop_id: 'GROQ-DEEP',
+                title: `Groq AI 進階排查：${inquiryContext.originalProblem.slice(0, 26)}`,
+                status: 'AI建議',
+                urgency: inquiryContext.isMajorIncident ? 'P1' : 'P2',
+                escalate_dept: activeGuidance.sop?.escalate_dept || '維護工程組',
+                allow_self_resolve: true
+              };
+              inquiryContext.matchedSop = aiSopObj;
+              activeGuidance = {
+                sop: aiSopObj,
+                steps: extraSteps,
+                currentStepIndex: 0,
+                isGroqFallback: true
+              };
+              presentCurrentStep();
+            } else {
+              inquiryContext.unresolvedReason = `已依序執行 [${prevSopId}] 全部排查步驟均未能排除故障`;
+              window.updateXiaoweiMood('ticket', '「所有步驟均已試畢，小威已為您填妥報修單！」');
+              const allExhaustedMsg = `針對此問題的排查步驟均已嘗試完畢，仍無法恢復正常。小威已自動將測試歷程彙整至【報修確認表單】，請檢閱確認送出！`;
+              window.appendUserChat('ai', allExhaustedMsg, false);
+              window.logChatToSupabase('ai', allExhaustedMsg);
+              setTimeout(() => openTicketModalPreview(), 450);
+            }
+          })();
         } else {
-          inquiryContext.unresolvedReason = `已依序執行 [${activeGuidance.sop?.sop_id || 'SOP'}] 全部 ${activeGuidance.steps.length} 項排查步驟均未能排除故障`;
+          inquiryContext.unresolvedReason = `已依序執行知識庫與 Groq AI 全部排查步驟均未能排除故障`;
           window.updateXiaoweiMood('ticket', '「所有步驟均已試畢，小威已為您填妥報修單！」');
-          const allExhaustedMsg = `針對此問題的排查步驟均已嘗試完畢，仍無法恢復正常。小威已自動將測試歷程彙整至【報修確認表單】，請檢閱確認送出！`;
+          const allExhaustedMsg = `針對此問題的知識庫與 Groq AI 進階排查步驟均已嘗試完畢，仍無法恢復正常。小威已自動將測試歷程彙整至【報修確認表單】，請檢閱確認送出！`;
           window.appendUserChat('ai', allExhaustedMsg, false);
           window.logChatToSupabase('ai', allExhaustedMsg);
           window.speak("所有測試步驟均已嘗試完畢，正為您產出報修案件。");
