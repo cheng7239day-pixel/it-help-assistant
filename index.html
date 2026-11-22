@@ -1199,6 +1199,12 @@
     window.updateTurnUI = function() {
       const badge = document.getElementById('turnCounterBadge');
       if (!badge) return;
+      const isEngineer = currentUser && currentUser.role === 'engineer';
+      if (isEngineer) {
+        badge.innerText = `追問: ${turnCount} 輪 (不限)`;
+        badge.className = "text-[10px] bg-emerald-700 text-white px-1.5 py-0.2 rounded font-bold font-mono";
+        return;
+      }
       badge.innerText = `追問: ${turnCount}/${MAX_TURNS} 輪`;
       if (turnCount >= MAX_TURNS) {
         badge.className = "text-[10px] bg-rose-600 text-white px-1.5 py-0.2 rounded font-bold font-mono";
@@ -1517,26 +1523,22 @@
                         : 'text-[9px] bg-sky-900 border border-sky-400 text-sky-200 px-2 py-0.5 rounded-full');
       }
 
-      if (user.role === 'admin' || user.role === 'engineer') {
+      if (user.role === 'admin') {
         const userSec = document.getElementById('userSection');
         if (userSec) userSec.classList.add('hidden');
         const mgmtSec = document.getElementById('managementSection');
         if (mgmtSec) mgmtSec.classList.remove('hidden');
 
         const navUsersBtn = document.getElementById('navUsersBtn');
-        if (user.role === 'engineer') {
-          if (navUsersBtn) navUsersBtn.classList.add('hidden');
-          window.switchMgmtTab('kb');
-        } else {
-          if (navUsersBtn) navUsersBtn.classList.remove('hidden');
-          window.switchMgmtTab('users');
-        }
+        if (navUsersBtn) navUsersBtn.classList.remove('hidden');
+        window.switchMgmtTab('users');
 
         try { window.fetchUsersFromSupabase(); } catch(e){}
         try { window.fetchKbFromSupabase(); } catch(e){}
         try { window.fetchTicketsFromSupabase(); } catch(e){}
         try { window.fetchChatLogsFromSupabase(); } catch(e){}
       } else {
+        // 一般使用者與維護工程師 (engineer) 皆進入小威對話畫面；工程師追問次數不限並可取得維修指引
         const mgmtSec = document.getElementById('managementSection');
         if (mgmtSec) mgmtSec.classList.add('hidden');
         const userSec = document.getElementById('userSection');
@@ -1548,7 +1550,9 @@
         const chatArea = document.getElementById('chatArea');
         if (chatArea) chatArea.innerHTML = '';
 
-        const hello = `${currentUser.name} 您好！我是小威。請問您的設備遇到什麼狀況呢？`;
+        const hello = user.role === 'engineer'
+          ? `${currentUser.name} 您好！我是小威（工程師維修指引模式已啟用，追問次數不限）。請問現場設備遇到什麼狀況或需要哪項維修指引？`
+          : `${currentUser.name} 您好！我是小威。請問您的設備遇到什麼狀況呢？`;
         window.updateXiaoweiMood('idle', `「${hello}」`);
 
         window.appendUserChat('ai', hello, false);
@@ -2693,6 +2697,10 @@ ${stepsText}
     };
 
     window.approveUserInSupabase = async function(id, name) {
+      if (!currentUser || currentUser.role !== 'admin') {
+        alert("⛔ 權限不足：維護工程師無帳號權限審核權限！");
+        return;
+      }
       if (!supabaseClient) return;
       try {
         const { error } = await supabaseClient
@@ -2709,6 +2717,11 @@ ${stepsText}
     };
 
     window.updateUserRoleInSupabase = async function(id, newRole) {
+      if (!currentUser || currentUser.role !== 'admin') {
+        alert("⛔ 權限不足：維護工程師無帳號權限調整權限！");
+        window.fetchUsersFromSupabase();
+        return;
+      }
       if (!supabaseClient) return;
       try {
         const { error } = await supabaseClient
@@ -2841,8 +2854,13 @@ ${stepsText}
         idInput.readOnly = true;
         idInput.classList.add('bg-slate-100');
 
+        const statusSelect = document.getElementById('edit_sop_status');
+        const isEngineer = currentUser && currentUser.role === 'engineer';
+        const approvedOpt = statusSelect ? Array.from(statusSelect.options).find(o => o.value === '已審核') : null;
+        if (approvedOpt) approvedOpt.disabled = Boolean(isEngineer);
         document.getElementById('edit_sop_category').value = item.category || '基礎電腦-常規';
-        document.getElementById('edit_sop_status').value = item.status || '草稿待審';
+        const initStatus = isEngineer && item.status === '已審核' ? '草稿待審' : (item.status || '草稿待審');
+        document.getElementById('edit_sop_status').value = initStatus;
         document.getElementById('edit_sop_title').value = item.title || '';
         document.getElementById('edit_sop_keywords').value = Array.isArray(item.keywords) ? item.keywords.join(', ') : (item.keywords || '');
         document.getElementById('edit_sop_followup').value = item.followup_questions || '';
@@ -2856,8 +2874,12 @@ ${stepsText}
         idInput.readOnly = false;
         idInput.classList.remove('bg-slate-100');
 
+        const statusSelectNew = document.getElementById('edit_sop_status');
+        const isEngineerNew = currentUser && currentUser.role === 'engineer';
+        const approvedOptNew = statusSelectNew ? Array.from(statusSelectNew.options).find(o => o.value === '已審核') : null;
+        if (approvedOptNew) approvedOptNew.disabled = Boolean(isEngineerNew);
         document.getElementById('edit_sop_category').value = '基礎電腦-一般問題';
-        document.getElementById('edit_sop_status').value = '已審核';
+        document.getElementById('edit_sop_status').value = isEngineerNew ? '草稿待審' : '已審核';
         document.getElementById('edit_sop_title').value = prefillKeyword ? `針對「${prefillKeyword}」之處理 SOP` : '';
         document.getElementById('edit_sop_keywords').value = prefillKeyword || '';
         document.getElementById('edit_sop_followup').value = '';
@@ -2884,7 +2906,11 @@ ${stepsText}
       const sopId = document.getElementById('edit_sop_id').value.trim();
       const title = document.getElementById('edit_sop_title').value.trim();
       const category = document.getElementById('edit_sop_category').value.trim();
-      const status = document.getElementById('edit_sop_status').value;
+      let status = document.getElementById('edit_sop_status').value;
+      if ((!currentUser || currentUser.role !== 'admin') && status === '已審核') {
+        alert("⛔ 權限不足：維護工程師無 SOP 審核權限，將以「草稿待審」儲存送審！");
+        status = '草稿待審';
+      }
       const kwStr = document.getElementById('edit_sop_keywords').value.trim();
       const followup = document.getElementById('edit_sop_followup').value.trim();
       const safeSteps = document.getElementById('edit_sop_steps').value.trim();
