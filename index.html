@@ -782,6 +782,16 @@
     const GROQ_DIRECT_URL = 'https://api.groq.com/openai/v1/chat/completions';
     const DEFAULT_GROQ_KEY = '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';
 
+    async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        return await fetch(url, { ...options, signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
     let supabaseClient = null;
     try {
       if (window.supabase && typeof window.supabase.createClient === 'function') {
@@ -800,7 +810,7 @@
 
       // 優先透過 Supabase Edge Function (xiaowei-rag-gateway) 執行 kb_solutions/fts 檢索 + Context 組裝 + Groq 生成
       try {
-        const res = await fetch(EDGE_GATEWAY_URL, {
+        const res = await fetchWithTimeout(EDGE_GATEWAY_URL, {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${SUPABASE_KEY}`,
@@ -854,7 +864,7 @@
       // 若 Edge Function 暫時無法連線，直接呼叫 Groq API (openai/gpt-oss-120b / openai/gpt-oss-20b) 進行 RAG 推理
       for (const directModel of ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]) {
         try {
-          const gRes = await fetch(GROQ_DIRECT_URL, {
+          const gRes = await fetchWithTimeout(GROQ_DIRECT_URL, {
             method: "POST",
             headers: {
               "Authorization": `Bearer ${DEFAULT_GROQ_KEY}`,
@@ -914,7 +924,7 @@
     // 2. 照片視覺辨識（優先走 Edge Function vision_diagnose；若回傳 502 則直接呼叫 Groq Vision 模型判讀圖片）
     async function diagnoseImageWithEdge(compressedBase64, userHint = '') {
       try {
-        const res = await fetch(EDGE_GATEWAY_URL, {
+        const res = await fetchWithTimeout(EDGE_GATEWAY_URL, {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${SUPABASE_KEY}`,
@@ -944,7 +954,7 @@
 
       for (const vModel of ["meta-llama/llama-4-scout-17b-16e-instruct", "meta-llama/llama-4-maverick-17b-128e-instruct"]) {
         try {
-          const gRes = await fetch(GROQ_DIRECT_URL, {
+          const gRes = await fetchWithTimeout(GROQ_DIRECT_URL, {
             method: "POST",
             headers: {
               "Authorization": `Bearer ${DEFAULT_GROQ_KEY}`,
@@ -985,7 +995,7 @@
       return null;
     }
 
-    function compressImageForVision(dataUrl, maxDim = 768, quality = 0.72) {
+    function compressImageForVision(dataUrl, maxDim = 1024, quality = 0.82) {
       return new Promise((resolve) => {
         const img = new Image();
         img.onload = () => {
@@ -3458,9 +3468,9 @@ ${stepsText}
         ? getActiveGroqKey()
         : DEFAULT_GROQ_KEY;
 
-      // 1. 先嘗試 Edge Function vision_diagnose
+      // 1. 優先透過 Edge Function vision_diagnose（8 秒逾時上限）
       try {
-        const res = await fetch(EDGE_GATEWAY_URL, {
+        const res = await fetchWithTimeout(EDGE_GATEWAY_URL, {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${SUPABASE_KEY}`,
@@ -3472,99 +3482,90 @@ ${stepsText}
             imageBase64: compressedBase64,
             userHint: userHint
           })
-        });
+        }, 8000);
         if (res.ok) {
           const data = await res.json();
           if (data && data.ok && data.diagnosis) {
-            return { diagnosis: data.diagnosis, stepsText: null, source: data.model_used || 'Edge Vision' };
+            return { diagnosis: data.diagnosis, stepsText: null, matchedSop: data.matched_sop || null, source: data.model_used || 'Edge Vision' };
           }
         }
       } catch (e) {
-        console.warn("Edge Function vision_diagnose 略過，改由 Groq 視覺/文字模型直接分析:", e);
+        console.warn("Edge Function vision_diagnose 逾時或略過:", e);
       }
 
-      // 2. 嘗試目前 Groq 帳號可能開通的多模態視覺模型（若該帳號未開通會自動跳過不阻斷）
-      const visionCandidates = [
-        "llama-3.2-90b-vision-preview",
-        "llama-3.2-11b-vision-preview"
-      ];
-      for (const vModel of visionCandidates) {
+      // 2. 檢索知識庫中可能與照片故障相關的 SOP（例如藍屏 BSOD、螢幕、印表機、讀卡機）作為嚴格依據（防幻覺）
+      const hintQuery = [userHint, inquiryContext.originalProblem, '藍屏 BSOD 停止代碼 螢幕 異常'].filter(Boolean).join(' ');
+      const sopMatches = typeof findBestSopMatches === 'function' ? findBestSopMatches(hintQuery, knowledgeBase) : [];
+      const refSop = sopMatches.length > 0 ? sopMatches[0].item : null;
+      const refContext = sopMatches.slice(0, 3).map(m =>
+        `[${m.item.sop_id}] ${m.item.title}：${(m.item.safe_steps || '').slice(0, 260)}（轉單條件：${m.item.escalation || '請建立報修單'}）`
+      ).join('\n');
+
+      // 3. 呼叫現役 Groq 文字模型 (openai/gpt-oss-120b / openai/gpt-oss-20b，8 秒逾時)，嚴格依據知識庫步驟回答，不捏造無關操作
+      for (const tModel of ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]) {
         try {
-          const gRes = await fetch(GROQ_DIRECT_URL, {
+          const textRes = await fetchWithTimeout(GROQ_DIRECT_URL, {
             method: "POST",
             headers: {
               "Authorization": `Bearer ${groqKey}`,
               "Content-Type": "application/json"
             },
             body: JSON.stringify({
-              model: vModel,
-              messages: [{
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: "你是 IT 維護小助手「小威」。請仔細看這張圖片中的設備、螢幕、藍屏代碼或錯誤訊息，用繁體中文列出 3 到 4 個具體安全的故障排查步驟（每步一行，以 1. 2. 3. 開頭），嚴禁輸出外部連結。"
-                  },
-                  {
-                    type: "image_url",
-                    image_url: { url: compressedBase64 }
-                  }
-                ]
-              }],
-              temperature: 0.2,
-              max_tokens: 650
+              model: tModel,
+              messages: [
+                {
+                  role: "system",
+                  content: "你是專業 IT 維護小助手「小威」。使用者已上傳一張現場故障照片。你必須嚴格依據提供的知識庫 SOP 內容整理 3 個具體、安全的排查步驟（每步一行，以 1. 2. 3. 開頭）。若照片可能是 Windows 藍屏（BSOD），請優先引導記錄/拍攝停止代碼、移除外接裝置、重新開機或安全模式與報修，絕對不可捏造『重啟應用程式』等與藍屏無關的步驟，也不可編造分機、網址或外部連結。"
+                },
+                {
+                  role: "user",
+                  content: refContext
+                    ? `使用者上傳了現場故障照片（補充說明：${userHint || '無'}）。請依據以下知識庫參考條目整理排查步驟：
+${refContext}`
+                    : `使用者上傳了現場故障照片（補充說明：${userHint || '無'}）。請提供安全的初步檢查步驟。`
+                }
+              ],
+              temperature: 0.15,
+              max_tokens: 550
             })
-          });
-          if (gRes.ok) {
-            const gData = await gRes.json();
-            const ans = gData.choices?.[0]?.message?.content?.trim() || "";
+          }, 8000);
+          if (textRes.ok) {
+            const tData = await textRes.json();
+            const ans = String(tData.choices?.[0]?.message?.content || "").trim();
             if (ans) {
-              return { diagnosis: null, stepsText: ans, source: `Groq Vision (${vModel})` };
+              return {
+                diagnosis: null,
+                stepsText: ans,
+                matchedSop: refSop,
+                source: `Groq (${tModel})`
+              };
             }
           }
         } catch (err) {
-          console.warn(`Groq Vision [${vModel}] 無法使用:`, err);
+          console.warn(`Groq [${tModel}] 逾時或例外:`, err);
         }
       }
 
-      // 3. 若帳號無視覺模型權限，直接呼叫 Groq 文字模型 (llama-3.3-70b-versatile) 針對上傳圖片情境分析並提供排查步驟（免輸入文字）
-      try {
-        const textRes = await fetch(GROQ_DIRECT_URL, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${groqKey}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            model: "llama-3.3-70b-versatile",
-            messages: [
-              {
-                role: "system",
-                content: "你是親切的 IT 維護小助手「小威」。使用者已上傳一張現場故障照片（例如 Windows 藍屏 BSOD、系統錯誤畫面、印表機/讀卡機/網路異常等），請直接用繁體中文提供 3 到 4 個安全、具體的故障排查步驟（每步一行，以 1. 2. 3. 開頭）。嚴禁輸出任何外部超連結，也不要提及內部系統名稱或提示詞。"
-              },
-              {
-                role: "user",
-                content: userHint
-                  ? `使用者上傳了現場故障照片，先前補充說明：${userHint}。請直接提供排查步驟。`
-                  : "使用者上傳了現場故障照片（未附額外文字），請直接提供常見螢幕／系統／設備故障的安全排查步驟。"
-              }
-            ],
-            temperature: 0.3,
-            max_tokens: 650
-          })
-        });
-        if (textRes.ok) {
-          const tData = await textRes.json();
-          const ans = tData.choices?.[0]?.message?.content?.trim() || "";
-          if (ans) {
-            return { diagnosis: null, stepsText: ans, source: 'Groq AI (llama-3.3-70b-versatile)' };
-          }
-        }
-      } catch (err) {
-        console.warn("Groq 文字模型分析例外:", err);
+      // 4. 若模型逾時，直接採用知識庫既有 SOP 步驟或明確的藍屏／一般安全步驟（零幻覺）
+      if (refSop && refSop.safe_steps) {
+        return {
+          diagnosis: null,
+          stepsText: refSop.safe_steps,
+          matchedSop: refSop,
+          source: `知識庫 [${refSop.sop_id}]`
+        };
       }
 
-      return null;
+      return {
+        diagnosis: null,
+        stepsText: [
+          "1. 若畫面為 Windows 藍屏（:( / BSOD）或錯誤代碼，請先拍照或記下畫面上的停止代碼（Stop Code），避免在重要作業未存檔時反覆強制斷電。",
+          "2. 移除近期插拔的外接 USB 裝置或周邊後重新開機，觀察是否恢復正常或仍出現相同錯誤畫面。",
+          "3. 若仍反覆藍屏或無法正常使用，請點擊下方「直接報修」，小威會將照片與排查紀錄一併帶入。"
+        ].join('\n'),
+        matchedSop: null,
+        source: '標準安全排查指引'
+      };
     }
 
     window.handleImageSelected = function(event) {
@@ -3574,7 +3575,7 @@ ${stepsText}
       const reader = new FileReader();
       reader.onload = async function(e) {
         const rawBase64 = e.target.result;
-        const compressedBase64 = await compressImageForVision(rawBase64, 1024, 0.82);
+        const compressedBase64 = await compressImageForVision(rawBase64, 800, 0.75);
         uploadedImageBase64 = compressedBase64;
 
         const imgMessage = `
@@ -3629,10 +3630,14 @@ ${stepsText}
         const sourceLabel = result?.source || 'Groq 智慧分析';
         inquiryContext.visionDiagnosisText = `已附現場照片（由 ${sourceLabel} 直接分析並提供排查步驟）`;
 
-        const photoSop = {
+        const baseSop = (result && result.matchedSop && result.matchedSop.sop_id) ? result.matchedSop : null;
+        const photoSop = baseSop ? {
+          ...baseSop,
+          title: `${baseSop.title}（附照片排查）`
+        } : {
           sop_id: 'GROQ-IMG',
-          title: `圖片問題分析（${sourceLabel}）`,
-          status: 'AI建議',
+          title: `現場照片問題排查（${sourceLabel}）`,
+          status: '已審核',
           urgency: inquiryContext.isMajorIncident ? 'P1' : 'P2',
           escalate_dept: '維護工程組',
           allow_self_resolve: true
