@@ -1884,7 +1884,8 @@
       return sourceList.filter(k => {
         if (!k || !k.title || String(k.title).trim() === '' || k.title === '未命名問題') return false;
         if (k.status === '已停用') return false;
-        if (!isItStaff && k.target_audience === '資訊室') return false;
+        const aud = String(k.target_audience || '使用者').trim();
+        if (!isItStaff && aud === '資訊室') return false;
         return true;
       });
     }
@@ -2014,6 +2015,7 @@
         if (score >= 15) {
           if (sopIdL.startsWith('m-') && !isMaintenanceQuery) score += 14;
           if (sopIdL.startsWith('pcm-') && isMaintenanceQuery) score += 16;
+          if (currentUser && currentUser.role === 'engineer' && k.target_audience === '資訊室') score += 18;
           if (k.status === '已審核') score += 10;
         }
 
