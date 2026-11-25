@@ -464,6 +464,10 @@
         <button id="navChatLogsBtn" onclick="switchMgmtTab('chatLogs')" class="py-2.5 text-slate-400 hover:text-white">
           💬 對話歷程與自主學習 (<span id="chatLogsCount">0</span>)
         </button>
+        <button id="navSageBtn" onclick="switchMgmtTab('sage')" class="py-2.5 text-slate-400 hover:text-white flex items-center gap-1.5">
+          <span>💠 SAGE 事件辨識</span>
+          <span class="px-1.5 py-0.2 bg-emerald-600/30 text-emerald-300 border border-emerald-500/50 rounded text-[10px] font-bold">已整合</span>
+        </button>
       </nav>
 
       <div class="flex-1 p-4 overflow-y-auto text-xs text-slate-200">
@@ -539,6 +543,151 @@
             </button>
           </div>
           <div id="chatLogsContainer" class="space-y-2.5"></div>
+        </div>
+
+        <!-- SAGE 事件辨識與通報整合工作台 -->
+        <div id="tabSage" class="hidden space-y-4 text-slate-100">
+          <!-- 頂部 3 張即時統計卡 -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div class="bg-slate-800/95 border border-slate-700 rounded-xl p-3.5 flex flex-col justify-between shadow">
+              <div class="flex items-center justify-between text-xs text-slate-300 font-medium">
+                <span>持續觀察事件</span>
+                <span class="w-3 h-3 rounded-full border-2 border-slate-400 inline-block"></span>
+              </div>
+              <div class="my-2 flex items-baseline gap-1.5">
+                <span id="sageObserveCount" class="text-2xl font-bold text-indigo-300 font-mono">0</span>
+                <span class="text-xs text-slate-400">組</span>
+              </div>
+              <p class="text-[11px] text-slate-400">群組持續追蹤，不受分級窗口結束影響</p>
+            </div>
+
+            <div class="bg-slate-800/95 border border-slate-700 rounded-xl p-3.5 flex flex-col justify-between shadow">
+              <div class="flex items-center justify-between text-xs text-slate-300 font-medium">
+                <span>疑似共同事件</span>
+                <span class="text-amber-400 text-xs">△</span>
+              </div>
+              <div class="my-2 flex items-baseline gap-1.5">
+                <span id="sageSuspectCount" class="text-2xl font-bold text-amber-400 font-mono">0</span>
+                <span class="text-xs text-slate-400">組</span>
+              </div>
+              <p class="text-[11px] text-slate-400">待值班人員確認共同事件</p>
+            </div>
+
+            <div class="bg-slate-800/95 border border-slate-700 rounded-xl p-3.5 flex flex-col justify-between shadow">
+              <div class="flex items-center justify-between text-xs text-slate-300 font-medium">
+                <span>已接收報修</span>
+                <button onclick="fetchSageIncidentsFromSupabase()" class="text-[10px] text-sky-400 hover:text-sky-300">🔄 同步</button>
+              </div>
+              <div class="my-2 flex items-baseline gap-1.5">
+                <span id="sageTicketCount" class="text-2xl font-bold text-sky-300 font-mono">0</span>
+                <span class="text-xs text-slate-400">筆</span>
+              </div>
+              <p class="text-[11px] text-slate-400">量級按不同 Ticket ID 計次</p>
+            </div>
+          </div>
+
+          <!-- SAGE 二級子分頁列 -->
+          <div class="bg-slate-800/80 border border-slate-700 rounded-xl px-3 flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center space-x-4 text-xs font-medium">
+              <button id="sageSubCenterBtn" onclick="switchSageSubTab('center')" class="py-2.5 border-b-2 border-indigo-400 text-indigo-300 font-bold flex items-center gap-1.5">
+                <span>▦ 事件情報中心</span>
+              </button>
+              <button id="sageSubNotifyBtn" onclick="switchSageSubTab('notify')" class="py-2.5 text-slate-400 hover:text-white flex items-center gap-1.5">
+                <span>◇ 通報事件與規範</span>
+              </button>
+              <button id="sageSubAuditBtn" onclick="switchSageSubTab('audit')" class="py-2.5 text-slate-400 hover:text-white flex items-center gap-1.5">
+                <span>✓ 事件審核中心</span>
+              </button>
+            </div>
+            <button onclick="runSageCorrelationScan()" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[11px] font-bold transition">
+              ⚡ 重新關聯辨識報修與對話事件
+            </button>
+          </div>
+
+          <!-- 子分頁 1：事件情報中心 -->
+          <div id="sageSubCenter" class="space-y-3">
+            <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4">
+              <div class="text-[10px] font-mono tracking-widest text-indigo-400 uppercase mb-1">
+                SAGE 工作台 / 事件情報中心
+              </div>
+              <div class="text-[11px] font-mono tracking-wider text-slate-400 uppercase">
+                SEE THE SIGNAL. CONNECT THE INCIDENT.
+              </div>
+              <h4 class="text-base font-bold text-white mt-0.5">事件情報中心</h4>
+              <p class="text-xs text-slate-400 mt-0.5">連結不同描述，提早看見共同事件。</p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 min-h-[340px]">
+              <!-- 左側事件群組清單 -->
+              <div class="lg:col-span-5 bg-slate-800/90 border border-slate-700 rounded-xl p-3.5 flex flex-col space-y-2.5">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-bold text-white">事件群組 / <span id="sageGroupTotalLabel">0</span></span>
+                  <span class="text-[10px] font-mono text-indigo-300 tracking-wider">LIVE OBSERVATION</span>
+                </div>
+                <input id="sageSearchInput" type="text" oninput="renderSageWorkbench()" placeholder="搜尋事件、系統或廠區..."
+                       class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+                <div class="flex items-center gap-1.5 text-[11px]">
+                  <button onclick="setSageFilter('ALL')" id="sageFilterALL" class="px-2.5 py-1 rounded bg-indigo-600 text-white font-bold">全部</button>
+                  <button onclick="setSageFilter('SUSPECT')" id="sageFilterSUSPECT" class="px-2.5 py-1 rounded bg-slate-700 text-slate-300 hover:bg-slate-600">疑似事件</button>
+                  <button onclick="setSageFilter('OBSERVING')" id="sageFilterOBSERVING" class="px-2.5 py-1 rounded bg-slate-700 text-slate-300 hover:bg-slate-600">觀案中</button>
+                  <button onclick="setSageFilter('CONFIRMED')" id="sageFilterCONFIRMED" class="px-2.5 py-1 rounded bg-slate-700 text-slate-300 hover:bg-slate-600">已確認</button>
+                </div>
+                <div id="sageGroupList" class="flex-1 space-y-2 overflow-y-auto max-h-[260px] pr-1">
+                  <div class="h-full min-h-[160px] flex flex-col items-center justify-center text-slate-500 text-xs py-8">
+                    <span class="text-lg mb-1">◇</span>
+                    <span>尚無事件群組</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 右側事件詳情與關聯報修 -->
+              <div id="sageGroupDetailPanel" class="lg:col-span-7 bg-slate-800/90 border border-slate-700 rounded-xl p-4 flex items-center justify-center text-slate-500 text-xs">
+                <div class="text-center space-y-1">
+                  <div class="text-lg">◇</div>
+                  <div>尚無事件群組</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 子分頁 2：通報事件與規範 -->
+          <div id="sageSubNotify" class="hidden bg-slate-800/90 border border-slate-700 rounded-xl p-4 space-y-3">
+            <div class="flex flex-wrap justify-between items-center gap-2">
+              <div>
+                <h4 class="text-sm font-bold text-white">通報事件與分級規範</h4>
+                <p class="text-[11px] text-slate-400">當同系統、同單位或同類故障在短時間內達門檻，或標記 P1 緊急／疑似重大事件時，自動標示並支援通報。</p>
+              </div>
+              <button onclick="triggerSageNotificationDraft()" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold transition">
+                📣 產生事件通報摘要
+              </button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs">
+              <div class="bg-slate-900/80 border border-rose-500/40 rounded-lg p-3">
+                <div class="font-bold text-rose-300 mb-1">P1 疑似重大／緊急事件</div>
+                <p class="text-[11px] text-slate-300 leading-relaxed">多人／多診間或核心系統受影響、資安異常或勒索警示：立即優先通報值班工程師與管理單位。</p>
+              </div>
+              <div class="bg-slate-900/80 border border-amber-500/40 rounded-lg p-3">
+                <div class="font-bold text-amber-300 mb-1">疑似共同事件聚類</div>
+                <p class="text-[11px] text-slate-300 leading-relaxed">不同同仁描述相似症狀、系統或設備／廠區，系統自動歸群供值班人員確認是否為共同事件。</p>
+              </div>
+              <div class="bg-slate-900/80 border border-indigo-500/40 rounded-lg p-3">
+                <div class="font-bold text-indigo-300 mb-1">持續觀察群組</div>
+                <p class="text-[11px] text-slate-300 leading-relaxed">跨時段持續追蹤同一類問題的演變與復發頻率，不因單一觀察視窗結束而中斷。</p>
+              </div>
+            </div>
+            <div id="sageNotifyPreviewBox" class="bg-slate-900 border border-slate-700 rounded-lg p-3 text-[11px] text-slate-300 whitespace-pre-line">
+              尚未產生通報摘要，請在「事件情報中心」選取群組或點擊上方按鈕產生。
+            </div>
+          </div>
+
+          <!-- 子分頁 3：事件審核中心 -->
+          <div id="sageSubAudit" class="hidden bg-slate-800/90 border border-slate-700 rounded-xl p-4 space-y-3">
+            <h4 class="text-sm font-bold text-white">事件審核中心</h4>
+            <p class="text-[11px] text-slate-400">值班人員／管理者可於此確認疑似共同事件、調整觀察狀態，或將重複發生的故障沉澱為知識庫 SOP。</p>
+            <div id="sageAuditList" class="space-y-2 text-xs text-slate-400">
+              目前尚無待審核事件群組。
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -1289,17 +1438,29 @@
     };
 
     window.switchMgmtTab = function(tab) {
-      ['users', 'kb', 'tickets', 'chatLogs'].forEach(t => {
+      ['users', 'kb', 'tickets', 'chatLogs', 'sage'].forEach(t => {
         const tabEl = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
         if (tabEl) tabEl.classList.add('hidden');
         const navBtn = document.getElementById('nav' + t.charAt(0).toUpperCase() + t.slice(1) + 'Btn');
-        if (navBtn) navBtn.className = "py-2.5 text-slate-400 hover:text-white";
+        if (navBtn) {
+          navBtn.className = t === 'sage'
+            ? "py-2.5 text-slate-400 hover:text-white flex items-center gap-1.5"
+            : "py-2.5 text-slate-400 hover:text-white";
+        }
       });
 
       const activeTabEl = document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1));
       if (activeTabEl) activeTabEl.classList.remove('hidden');
       const activeNavBtn = document.getElementById('nav' + tab.charAt(0).toUpperCase() + tab.slice(1) + 'Btn');
-      if (activeNavBtn) activeNavBtn.className = "py-2.5 border-b-2 border-indigo-400 text-indigo-400 font-bold";
+      if (activeNavBtn) {
+        activeNavBtn.className = tab === 'sage'
+          ? "py-2.5 border-b-2 border-indigo-400 text-indigo-300 font-bold flex items-center gap-1.5"
+          : "py-2.5 border-b-2 border-indigo-400 text-indigo-400 font-bold";
+      }
+
+      if (tab === 'sage' && typeof window.fetchSageIncidentsFromSupabase === 'function') {
+        window.fetchSageIncidentsFromSupabase();
+      }
     };
 
     window.handleOrgTypeChange = function(orgType) {
@@ -1590,6 +1751,7 @@
         try { window.fetchKbFromSupabase(); } catch(e){}
         try { window.fetchTicketsFromSupabase(); } catch(e){}
         try { window.fetchChatLogsFromSupabase(); } catch(e){}
+        try { window.fetchSageIncidentsFromSupabase(); } catch(e){}
       } else {
         // 一般使用者與維護工程師 (engineer) 皆進入小威對話畫面；工程師追問次數不限並可取得維修指引
         const mgmtSec = document.getElementById('managementSection');
@@ -3468,7 +3630,7 @@ ${stepsText}
         ? getActiveGroqKey()
         : DEFAULT_GROQ_KEY;
 
-      // 1. 優先透過 Edge Function vision_diagnose（8 秒逾時上限）
+      // 1. 優先透過 Edge Function vision_diagnose 進行圖片辨識（10 秒逾時）
       try {
         const res = await fetchWithTimeout(EDGE_GATEWAY_URL, {
           method: "POST",
@@ -3482,26 +3644,73 @@ ${stepsText}
             imageBase64: compressedBase64,
             userHint: userHint
           })
-        }, 8000);
+        }, 10000);
         if (res.ok) {
           const data = await res.json();
-          if (data && data.ok && data.diagnosis) {
-            return { diagnosis: data.diagnosis, stepsText: null, matchedSop: data.matched_sop || null, source: data.model_used || 'Edge Vision' };
+          if (data && data.ok && data.diagnosis && data.diagnosis.search_query) {
+            return { diagnosis: data.diagnosis, stepsText: null, matchedSop: null, source: data.model_used || 'Edge Vision' };
           }
         }
       } catch (e) {
-        console.warn("Edge Function vision_diagnose 逾時或略過:", e);
+        console.warn("Edge Function vision_diagnose 逾時或未啟用，改由 Groq 視覺模型辨識:", e);
       }
 
-      // 2. 檢索知識庫中可能與照片故障相關的 SOP（例如藍屏 BSOD、螢幕、印表機、讀卡機）作為嚴格依據（防幻覺）
-      const hintQuery = [userHint, inquiryContext.originalProblem, '藍屏 BSOD 停止代碼 螢幕 異常'].filter(Boolean).join(' ');
-      const sopMatches = typeof findBestSopMatches === 'function' ? findBestSopMatches(hintQuery, knowledgeBase) : [];
-      const refSop = sopMatches.length > 0 ? sopMatches[0].item : null;
-      const refContext = sopMatches.slice(0, 3).map(m =>
-        `[${m.item.sop_id}] ${m.item.title}：${(m.item.safe_steps || '').slice(0, 260)}（轉單條件：${m.item.escalation || '請建立報修單'}）`
-      ).join('\n');
+      // 2. 直接呼叫 Groq 視覺模型辨識上傳照片內容（10 秒逾時）
+      const visionPrompt = `你是專業 IT 維護工程師助手「小威」。請仔細看這張圖片中的設備、螢幕、錯誤訊息或狀態，嚴格只輸出純 JSON（不要 markdown 標記）：
+{"device_type":"圖片中的設備或畫面類型","error_code":"畫面上的錯誤代碼或燈號(無則填無明確代碼)","error_text":"畫面或設備關鍵現象繁體中文摘要(60字內)","search_query":"適合檢索知識庫的精準關鍵詞","confidence":"high"}
+使用者補充：${userHint || "無"}`;
 
-      // 3. 呼叫現役 Groq 文字模型 (openai/gpt-oss-120b / openai/gpt-oss-20b，8 秒逾時)，嚴格依據知識庫步驟回答，不捏造無關操作
+      for (const vModel of ["meta-llama/llama-4-scout-17b-16e-instruct", "meta-llama/llama-4-maverick-17b-128e-instruct"]) {
+        try {
+          const gRes = await fetchWithTimeout(GROQ_DIRECT_URL, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${groqKey}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              model: vModel,
+              messages: [{
+                role: "user",
+                content: [
+                  { type: "text", text: visionPrompt },
+                  { type: "image_url", image_url: { url: compressedBase64 } }
+                ]
+              }],
+              temperature: 0.1,
+              max_tokens: 450
+            })
+          }, 10000);
+          if (gRes.ok) {
+            const gData = await gRes.json();
+            const raw = String(gData.choices?.[0]?.message?.content || "").trim();
+            const cleaned = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+            const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              const parsed = JSON.parse(jsonMatch[0]);
+              if (parsed && parsed.search_query) {
+                return {
+                  diagnosis: {
+                    device_type: parsed.device_type || "設備畫面",
+                    error_code: parsed.error_code || "無明確代碼",
+                    error_text: parsed.error_text || raw.slice(0, 80),
+                    search_query: parsed.search_query,
+                    confidence: parsed.confidence || "high"
+                  },
+                  stepsText: null,
+                  matchedSop: null,
+                  source: `Groq Vision (${vModel})`
+                };
+              }
+            }
+          }
+        } catch (err) {
+          console.warn(`Groq Vision [${vModel}] 呼叫異常或逾時:`, err);
+        }
+      }
+
+      // 3. 若視覺模型無權限或逾時，改由 Groq 文字模型 (openai/gpt-oss-120b) 依使用者補充或圖片情境產出排查步驟（不強制套用特定 SOP 編號）
+      const contextHint = [userHint, inquiryContext.originalProblem].filter(Boolean).join(' ');
       for (const tModel of ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]) {
         try {
           const textRes = await fetchWithTimeout(GROQ_DIRECT_URL, {
@@ -3515,17 +3724,16 @@ ${stepsText}
               messages: [
                 {
                   role: "system",
-                  content: "你是專業 IT 維護小助手「小威」。使用者已上傳一張現場故障照片。你必須嚴格依據提供的知識庫 SOP 內容整理 3 個具體、安全的排查步驟（每步一行，以 1. 2. 3. 開頭）。若照片可能是 Windows 藍屏（BSOD），請優先引導記錄/拍攝停止代碼、移除外接裝置、重新開機或安全模式與報修，絕對不可捏造『重啟應用程式』等與藍屏無關的步驟，也不可編造分機、網址或外部連結。"
+                  content: "你是專業 IT 維護小助手「小威」。使用者已上傳一張現場故障照片。請用繁體中文提供 3 個具體、安全的排查步驟（每步一行，以 1. 2. 3. 開頭）。嚴禁編造分機、網址或外部連結，也不要自行套用未比對到的特定 SOP 編號。"
                 },
                 {
                   role: "user",
-                  content: refContext
-                    ? `使用者上傳了現場故障照片（補充說明：${userHint || '無'}）。請依據以下知識庫參考條目整理排查步驟：
-${refContext}`
-                    : `使用者上傳了現場故障照片（補充說明：${userHint || '無'}）。請提供安全的初步檢查步驟。`
+                  content: contextHint
+                    ? `使用者上傳了現場故障照片，補充說明：${contextHint}。請提供 3 個排查步驟。`
+                    : "使用者上傳了現場故障照片（未附文字說明），請提供 3 個安全的現場初步排查步驟（例如確認電源/連線、觀察畫面或指示燈號、必要時報修並附上照片）。"
                 }
               ],
-              temperature: 0.15,
+              temperature: 0.2,
               max_tokens: 550
             })
           }, 8000);
@@ -3536,7 +3744,7 @@ ${refContext}`
               return {
                 diagnosis: null,
                 stepsText: ans,
-                matchedSop: refSop,
+                matchedSop: null,
                 source: `Groq (${tModel})`
               };
             }
@@ -3546,25 +3754,15 @@ ${refContext}`
         }
       }
 
-      // 4. 若模型逾時，直接採用知識庫既有 SOP 步驟或明確的藍屏／一般安全步驟（零幻覺）
-      if (refSop && refSop.safe_steps) {
-        return {
-          diagnosis: null,
-          stepsText: refSop.safe_steps,
-          matchedSop: refSop,
-          source: `知識庫 [${refSop.sop_id}]`
-        };
-      }
-
       return {
         diagnosis: null,
         stepsText: [
-          "1. 若畫面為 Windows 藍屏（:( / BSOD）或錯誤代碼，請先拍照或記下畫面上的停止代碼（Stop Code），避免在重要作業未存檔時反覆強制斷電。",
-          "2. 移除近期插拔的外接 USB 裝置或周邊後重新開機，觀察是否恢復正常或仍出現相同錯誤畫面。",
-          "3. 若仍反覆藍屏或無法正常使用，請點擊下方「直接報修」，小威會將照片與排查紀錄一併帶入。"
+          "1. 觀察上傳照片中的設備指示燈、螢幕顯示訊息或連線狀態是否正常。",
+          "2. 檢查相關電源線、網路線或周邊連接是否穩固，必要時重新啟動相關設備測試。",
+          "3. 若仍無法排除，請點擊下方「直接報修」，小威會將照片與排查紀錄一併帶入。"
         ].join('\n'),
         matchedSop: null,
-        source: '標準安全排查指引'
+        source: 'Groq 備援指引'
       };
     }
 
@@ -3630,14 +3828,10 @@ ${refContext}`
         const sourceLabel = result?.source || 'Groq 智慧分析';
         inquiryContext.visionDiagnosisText = `已附現場照片（由 ${sourceLabel} 直接分析並提供排查步驟）`;
 
-        const baseSop = (result && result.matchedSop && result.matchedSop.sop_id) ? result.matchedSop : null;
-        const photoSop = baseSop ? {
-          ...baseSop,
-          title: `${baseSop.title}（附照片排查）`
-        } : {
+        const photoSop = {
           sop_id: 'GROQ-IMG',
-          title: `現場照片問題排查（${sourceLabel}）`,
-          status: '已審核',
+          title: `現場照片問題分析（${sourceLabel}）`,
+          status: 'AI建議',
           urgency: inquiryContext.isMajorIncident ? 'P1' : 'P2',
           escalate_dept: '維護工程組',
           allow_self_resolve: true
@@ -3658,6 +3852,316 @@ ${refContext}`
         event.target.value = '';
       };
       reader.readAsDataURL(file);
+    };
+
+    // ==========================================
+    // N. SAGE 事件辨識、群組關聯與通報工作台
+    // ==========================================
+    let sageGroups = [];
+    let sageSelectedGroupId = null;
+    let sageFilterStatus = 'ALL';
+    let sageConfirmedIds = new Set();
+
+    window.switchSageSubTab = function(subTab) {
+      ['center', 'notify', 'audit'].forEach(st => {
+        const panel = document.getElementById('sageSub' + st.charAt(0).toUpperCase() + st.slice(1));
+        if (panel) panel.classList.add('hidden');
+        const btn = document.getElementById('sageSub' + st.charAt(0).toUpperCase() + st.slice(1) + 'Btn');
+        if (btn) btn.className = "py-2.5 text-slate-400 hover:text-white flex items-center gap-1.5";
+      });
+
+      const activePanel = document.getElementById('sageSub' + subTab.charAt(0).toUpperCase() + subTab.slice(1));
+      if (activePanel) activePanel.classList.remove('hidden');
+      const activeBtn = document.getElementById('sageSub' + subTab.charAt(0).toUpperCase() + subTab.slice(1) + 'Btn');
+      if (activeBtn) activeBtn.className = "py-2.5 border-b-2 border-indigo-400 text-indigo-300 font-bold flex items-center gap-1.5";
+    };
+
+    window.setSageFilter = function(flt) {
+      sageFilterStatus = flt;
+      ['ALL', 'SUSPECT', 'OBSERVING', 'CONFIRMED'].forEach(k => {
+        const b = document.getElementById('sageFilter' + k);
+        if (!b) return;
+        b.className = (k === flt)
+          ? "px-2.5 py-1 rounded bg-indigo-600 text-white font-bold"
+          : "px-2.5 py-1 rounded bg-slate-700 text-slate-300 hover:bg-slate-600";
+      });
+      renderSageWorkbench();
+    };
+
+    function classifySageTopic(text) {
+      const t = String(text || '').toLowerCase();
+      if (t.includes('vpn') || t.includes('健保') || t.includes('憑證') || t.includes('hicos')) return '健保VPN與憑證';
+      if (t.includes('his') || t.includes('醫令') || t.includes('門診') || t.includes('批價') || t.includes('病歷')) return 'HIS醫療系統';
+      if (t.includes('印表機') || t.includes('標籤') || t.includes('條碼') || t.includes('列印') || t.includes('卡紙')) return '印表機與標籤設備';
+      if (t.includes('讀卡機') || t.includes('卡機') || t.includes('插卡')) return '讀卡機與刷卡設備';
+      if (t.includes('網路') || t.includes('斷網') || t.includes('wifi') || t.includes('ip') || t.includes('共用')) return '網路與共用連線';
+      if (t.includes('藍屏') || t.includes('bsod') || t.includes('當機') || t.includes('開機') || t.includes('黑屏')) return '主機與系統異常';
+      return '一般設備與服務事件';
+    }
+
+    window.runSageCorrelationScan = function(ticketsRows = [], chatRows = []) {
+      const clusterMap = new Map();
+
+      (ticketsRows || []).forEach((t) => {
+        const desc = `${t.device_model || ''} ${t.problem_description || ''}`;
+        const topic = classifySageTopic(desc);
+        const unit = t.company_plant || t.location || '未標示單位';
+        const key = `${topic}__${unit}`;
+        if (!clusterMap.has(key)) {
+          clusterMap.set(key, {
+            id: key,
+            topic,
+            unit,
+            tickets: [],
+            chats: [],
+            isP1: false,
+            latestTime: t.created_at || t.call_time || new Date().toISOString()
+          });
+        }
+        const grp = clusterMap.get(key);
+        grp.tickets.push(t);
+        if (String(t.urgency || '').includes('P1') || String(t.problem_description || '').includes('P1')) {
+          grp.isP1 = true;
+        }
+        if (new Date(t.created_at || 0) > new Date(grp.latestTime || 0)) {
+          grp.latestTime = t.created_at;
+        }
+      });
+
+      const userChatSessions = new Map();
+      (chatRows || []).forEach((c) => {
+        if (c.message_role !== 'user') return;
+        const sid = c.session_id || `${c.user_email || c.user_name}_${String(c.created_at || '').slice(0, 13)}`;
+        if (!userChatSessions.has(sid)) {
+          userChatSessions.set(sid, c);
+        }
+      });
+
+      userChatSessions.forEach((c) => {
+        const content = String(c.message_content || '');
+        if (!content || content.startsWith('[')) return;
+        const topic = classifySageTopic(content);
+        const unit = c.company ? `${c.company}${c.jurisdiction ? ` (${c.jurisdiction})` : ''}` : (c.jurisdiction || '一般單位');
+        let matchedKey = null;
+        for (const [k, grp] of clusterMap.entries()) {
+          if (grp.topic === topic) {
+            matchedKey = k;
+            break;
+          }
+        }
+        if (!matchedKey) {
+          matchedKey = `${topic}__${unit}`;
+          clusterMap.set(matchedKey, {
+            id: matchedKey,
+            topic,
+            unit,
+            tickets: [],
+            chats: [],
+            isP1: false,
+            latestTime: c.created_at || new Date().toISOString()
+          });
+        }
+        const grp = clusterMap.get(matchedKey);
+        grp.chats.push(c);
+        if (new Date(c.created_at || 0) > new Date(grp.latestTime || 0)) {
+          grp.latestTime = c.created_at;
+        }
+      });
+
+      sageGroups = Array.from(clusterMap.values()).map((grp) => {
+        const totalSignals = grp.tickets.length + grp.chats.length;
+        let state = 'OBSERVING';
+        if (sageConfirmedIds.has(grp.id)) {
+          state = 'CONFIRMED';
+        } else if (grp.isP1 || totalSignals >= 2) {
+          state = 'SUSPECT';
+        }
+        return { ...grp, state, totalSignals };
+      }).sort((a, b) => new Date(b.latestTime || 0) - new Date(a.latestTime || 0));
+
+      if (!sageSelectedGroupId && sageGroups.length > 0) {
+        sageSelectedGroupId = sageGroups[0].id;
+      }
+
+      const obsCount = sageGroups.filter(g => g.state === 'OBSERVING').length;
+      const susCount = sageGroups.filter(g => g.state === 'SUSPECT').length;
+      const tkCount = new Set((ticketsRows || []).map(t => t.service_id).filter(Boolean)).size || (ticketsRows || []).length;
+
+      const obsEl = document.getElementById('sageObserveCount');
+      const susEl = document.getElementById('sageSuspectCount');
+      const tkEl = document.getElementById('sageTicketCount');
+      if (obsEl) obsEl.innerText = obsCount;
+      if (susEl) susEl.innerText = susCount;
+      if (tkEl) tkEl.innerText = tkCount;
+
+      renderSageWorkbench();
+    };
+
+    window.fetchSageIncidentsFromSupabase = async function() {
+      if (!supabaseClient) {
+        window.runSageCorrelationScan([], []);
+        return;
+      }
+      try {
+        const [tkRes, chRes] = await Promise.all([
+          supabaseClient.from('tickets').select('*').order('created_at', { ascending: false }).limit(150),
+          supabaseClient.from('chat_logs').select('*').order('created_at', { ascending: false }).limit(300)
+        ]);
+        const tRows = (!tkRes.error && Array.isArray(tkRes.data)) ? tkRes.data : [];
+        const cRows = (!chRes.error && Array.isArray(chRes.data)) ? chRes.data : [];
+        window.runSageCorrelationScan(tRows, cRows);
+      } catch (err) {
+        console.warn("載入 SAGE 事件資料異常:", err);
+        window.runSageCorrelationScan([], []);
+      }
+    };
+
+    window.selectSageGroup = function(groupId) {
+      sageSelectedGroupId = groupId;
+      renderSageWorkbench();
+    };
+
+    window.confirmSageGroup = function(groupId) {
+      sageConfirmedIds.add(groupId);
+      window.fetchSageIncidentsFromSupabase();
+    };
+
+    window.triggerSageNotificationDraft = function() {
+      const box = document.getElementById('sageNotifyPreviewBox');
+      if (!box) return;
+      const target = sageGroups.find(g => g.id === sageSelectedGroupId) || sageGroups[0];
+      if (!target) {
+        box.innerText = "目前尚無事件群組可產生通報摘要。";
+        return;
+      }
+      const level = target.isP1 ? "P1 緊急／疑似重大事件" : (target.state === 'SUSPECT' ? "疑似共同事件" : "持續觀察事件");
+      box.innerText = `【SAGE 事件通報摘要】
+事件類別：${target.topic}
+涉及單位／位置：${target.unit}
+研判等級：${level}
+關聯報修單數：${target.tickets.length} 筆｜關聯使用者諮詢：${target.chats.length} 則
+建議處置：請值班工程師確認受影響範圍與設備／系統狀態，必要時啟動跨單位通報與升級處理。`;
+      window.switchSageSubTab('notify');
+    };
+
+    function renderSageWorkbench() {
+      const q = String(document.getElementById('sageSearchInput')?.value || '').trim().toLowerCase();
+      const filtered = sageGroups.filter(g => {
+        if (sageFilterStatus !== 'ALL' && g.state !== sageFilterStatus) return false;
+        if (!q) return true;
+        return `${g.topic} ${g.unit}`.toLowerCase().includes(q);
+      });
+
+      const totalLabel = document.getElementById('sageGroupTotalLabel');
+      if (totalLabel) totalLabel.innerText = filtered.length;
+
+      const listEl = document.getElementById('sageGroupList');
+      const detailEl = document.getElementById('sageGroupDetailPanel');
+      const auditEl = document.getElementById('sageAuditList');
+
+      if (listEl) {
+        if (filtered.length === 0) {
+          listEl.innerHTML = `
+            <div class="h-full min-h-[160px] flex flex-col items-center justify-center text-slate-500 text-xs py-8">
+              <span class="text-lg mb-1">◇</span>
+              <span>尚無事件群組</span>
+            </div>
+          `;
+        } else {
+          listEl.innerHTML = filtered.map(g => {
+            const active = g.id === sageSelectedGroupId;
+            const badge = g.state === 'CONFIRMED'
+              ? '<span class="px-1.5 py-0.5 rounded text-[10px] bg-emerald-900/70 text-emerald-300 border border-emerald-600/50">已確認</span>'
+              : (g.state === 'SUSPECT'
+                ? '<span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-900/70 text-amber-300 border border-amber-600/50">疑似事件</span>'
+                : '<span class="px-1.5 py-0.5 rounded text-[10px] bg-indigo-900/70 text-indigo-300 border border-indigo-600/50">觀案中</span>');
+            return `
+              <div onclick="selectSageGroup('${g.id.replace(/'/g, "\'")}')"
+                   class="p-2.5 rounded-lg border cursor-pointer transition ${active ? 'bg-indigo-950/70 border-indigo-400' : 'bg-slate-900/70 border-slate-700 hover:border-slate-500'}">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-xs font-bold text-white truncate">${g.topic}</span>
+                  ${badge}
+                </div>
+                <div class="text-[11px] text-slate-400 mt-1 truncate">${g.unit}</div>
+                <div class="text-[10px] text-slate-500 mt-1 font-mono">報修 ${g.tickets.length} 筆 · 諮詢 ${g.chats.length} 則</div>
+              </div>
+            `;
+          }).join('');
+        }
+      }
+
+      if (detailEl) {
+        const cur = filtered.find(g => g.id === sageSelectedGroupId) || filtered[0];
+        if (!cur) {
+          detailEl.className = "lg:col-span-7 bg-slate-800/90 border border-slate-700 rounded-xl p-4 flex items-center justify-center text-slate-500 text-xs";
+          detailEl.innerHTML = `<div class="text-center space-y-1"><div class="text-lg">◇</div><div>尚無事件群組</div></div>`;
+        } else {
+          detailEl.className = "lg:col-span-7 bg-slate-800/90 border border-slate-700 rounded-xl p-4 flex flex-col justify-between space-y-3 text-xs";
+          const tkItemsHtml = cur.tickets.slice(0, 5).map(t => `
+            <div class="p-2 bg-slate-900/80 border border-slate-700/70 rounded-lg">
+              <div class="flex justify-between font-bold text-sky-300">
+                <span class="font-mono">${t.service_id || 'TK'}</span>
+                <span class="text-slate-400 font-normal">${t.call_time || ''}</span>
+              </div>
+              <div class="text-slate-200 mt-0.5">${t.client_name || ''} · ${t.location || t.address || ''}</div>
+            </div>
+          `).join('') || '<div class="text-slate-500">此群組目前無報修單</div>';
+
+          const chItemsHtml = cur.chats.slice(0, 5).map(c => `
+            <div class="p-2 bg-slate-900/80 border border-slate-700/70 rounded-lg">
+              <div class="text-amber-300 font-medium">${c.message_content}</div>
+              <div class="text-[10px] text-slate-500 mt-0.5">${c.user_name || '使用者'} · ${c.company || ''}</div>
+            </div>
+          `).join('') || '<div class="text-slate-500">此群組目前無關聯對話</div>';
+
+          detailEl.innerHTML = `
+            <div class="space-y-3 overflow-y-auto max-h-[300px]">
+              <div class="flex flex-wrap justify-between items-start gap-2 border-b border-slate-700 pb-2.5">
+                <div>
+                  <div class="text-sm font-bold text-white">${cur.topic}</div>
+                  <div class="text-[11px] text-slate-400 mt-0.5">涉及單位／位置：${cur.unit}</div>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <button onclick="confirmSageGroup('${cur.id.replace(/'/g, "\'")}')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold">
+                    ✓ 確認共同事件
+                  </button>
+                  <button onclick="triggerSageNotificationDraft()" class="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-[11px] font-bold">
+                    📣 事件通報
+                  </button>
+                </div>
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                <div class="space-y-1.5">
+                  <div class="text-[11px] font-bold text-sky-300">🎫 關聯報修案件 (${cur.tickets.length})</div>
+                  ${tkItemsHtml}
+                </div>
+                <div class="space-y-1.5">
+                  <div class="text-[11px] font-bold text-amber-300">💬 關聯使用者諮詢 (${cur.chats.length})</div>
+                  ${chItemsHtml}
+                </div>
+              </div>
+            </div>
+          `;
+        }
+      }
+
+      if (auditEl) {
+        if (sageGroups.length === 0) {
+          auditEl.innerHTML = '<div class="text-slate-500">目前尚無待審核事件群組。</div>';
+        } else {
+          auditEl.innerHTML = sageGroups.map(g => `
+            <div class="p-3 bg-slate-900/80 border border-slate-700 rounded-lg flex flex-wrap justify-between items-center gap-2">
+              <div>
+                <div class="font-bold text-white">${g.topic} <span class="text-slate-400 font-normal">(${g.unit})</span></div>
+                <div class="text-[11px] text-slate-400">狀態：${g.state} · 報修 ${g.tickets.length} 筆 · 諮詢 ${g.chats.length} 則</div>
+              </div>
+              <button onclick="confirmSageGroup('${g.id.replace(/'/g, "\'")}')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold">
+                標記為已確認
+              </button>
+            </div>
+          `).join('');
+        }
+      }
     };
 
     window.addEventListener('DOMContentLoaded', () => {
