@@ -3855,12 +3855,14 @@ ${stepsText}
     };
 
     // ==========================================
-    // N. SAGE 事件辨識、群組關聯與通報工作台
+    // N. SAGE 事件辨識、AI 語意聚類與通報工作台 (整合 sage_incidents + sage_correlate)
     // ==========================================
     let sageGroups = [];
     let sageSelectedGroupId = null;
     let sageFilterStatus = 'ALL';
     let sageConfirmedIds = new Set();
+    let sageDismissedIds = new Set();
+    let sageLastModelUsed = 'rule-only';
 
     window.switchSageSubTab = function(subTab) {
       ['center', 'notify', 'audit'].forEach(st => {
@@ -3899,7 +3901,7 @@ ${stepsText}
       return '一般設備與服務事件';
     }
 
-    window.runSageCorrelationScan = function(ticketsRows = [], chatRows = []) {
+    function buildRuleCandidateGroups(ticketsRows = [], chatRows = []) {
       const clusterMap = new Map();
 
       (ticketsRows || []).forEach((t) => {
@@ -3915,6 +3917,11 @@ ${stepsText}
             tickets: [],
             chats: [],
             isP1: false,
+            aiConfidence: 0,
+            rootCauseHypothesis: '',
+            aiSummary: '',
+            recommendedAction: '',
+            modelUsed: 'rule-engine',
             latestTime: t.created_at || t.call_time || new Date().toISOString()
           });
         }
@@ -3958,6 +3965,11 @@ ${stepsText}
             tickets: [],
             chats: [],
             isP1: false,
+            aiConfidence: 0,
+            rootCauseHypothesis: '',
+            aiSummary: '',
+            recommendedAction: '',
+            modelUsed: 'rule-engine',
             latestTime: c.created_at || new Date().toISOString()
           });
         }
@@ -3968,18 +3980,164 @@ ${stepsText}
         }
       });
 
-      sageGroups = Array.from(clusterMap.values()).map((grp) => {
-        const totalSignals = grp.tickets.length + grp.chats.length;
-        let state = 'OBSERVING';
-        if (sageConfirmedIds.has(grp.id)) {
-          state = 'CONFIRMED';
-        } else if (grp.isP1 || totalSignals >= 2) {
-          state = 'SUSPECT';
-        }
-        return { ...grp, state, totalSignals };
-      }).sort((a, b) => new Date(b.latestTime || 0) - new Date(a.latestTime || 0));
+      return Array.from(clusterMap.values());
+    }
 
-      if (!sageSelectedGroupId && sageGroups.length > 0) {
+    async function callSageCorrelateGateway(ticketsRows, chatRows, candidateGroups) {
+      try {
+        const res = await fetchWithTimeout(EDGE_GATEWAY_URL, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${SUPABASE_KEY}`,
+            "apikey": SUPABASE_KEY,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            mode: "sage_correlate",
+            tickets: (ticketsRows || []).slice(0, 35).map(t => ({
+              service_id: t.service_id,
+              company_plant: t.company_plant,
+              location: t.location,
+              urgency: t.urgency,
+              device_model: t.device_model,
+              problem_description: String(t.problem_description || '').slice(0, 220),
+              call_time: t.call_time,
+              created_at: t.created_at
+            })),
+            chats: (chatRows || []).filter(c => c.message_role === 'user').slice(0, 35).map(c => ({
+              session_id: c.session_id,
+              company: c.company,
+              jurisdiction: c.jurisdiction,
+              message_content: String(c.message_content || '').slice(0, 180),
+              created_at: c.created_at
+            })),
+            candidate_groups: candidateGroups.slice(0, 12).map(g => ({
+              group_key: g.id,
+              topic: g.topic,
+              unit: g.unit,
+              ticket_count: g.tickets.length,
+              chat_count: g.chats.length
+            }))
+          })
+        }, 10000);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.ok && Array.isArray(data.groups)) {
+            return { groups: data.groups, modelUsed: data.model_used || 'openai/gpt-oss-120b' };
+          }
+        }
+      } catch (e) {
+        console.warn("Edge Function sage_correlate 呼叫異常，改由規則與本地儲存狀態呈現:", e);
+      }
+      return null;
+    }
+
+    window.runSageCorrelationScan = async function(ticketsRows = null, chatRows = null) {
+      if (!Array.isArray(ticketsRows) || !Array.isArray(chatRows)) {
+        await window.fetchSageIncidentsFromSupabase();
+        return;
+      }
+
+      const candidateGroups = buildRuleCandidateGroups(ticketsRows, chatRows);
+
+      // 讀取 Supabase sage_incidents 既有的審核狀態 (CONFIRMED / DISMISSED)
+      let dbIncidentsMap = new Map();
+      if (supabaseClient) {
+        try {
+          const { data: dbInc } = await supabaseClient
+            .from('sage_incidents')
+            .select('*')
+            .order('updated_at', { ascending: false })
+            .limit(100);
+          if (Array.isArray(dbInc)) {
+            dbInc.forEach(row => {
+              dbIncidentsMap.set(row.group_key, row);
+              if (row.status === 'CONFIRMED') sageConfirmedIds.add(row.group_key);
+              if (row.status === 'DISMISSED') sageDismissedIds.add(row.group_key);
+            });
+          }
+        } catch (_err) {
+          // 若尚未建立 sage_incidents 表則自動退回前端記憶體狀態
+        }
+      }
+
+      // 呼叫 xiaowei-rag-gateway (mode: "sage_correlate") 進行 AI 語意聚類與根因判讀
+      const aiCorrelated = await callSageCorrelateGateway(ticketsRows, chatRows, candidateGroups);
+      const aiGroupMap = new Map();
+      if (aiCorrelated && Array.isArray(aiCorrelated.groups)) {
+        sageLastModelUsed = aiCorrelated.modelUsed;
+        aiCorrelated.groups.forEach(ag => {
+          const k = String(ag.group_key || `${ag.topic || ''}__${ag.unit || ''}`);
+          aiGroupMap.set(k, ag);
+        });
+      } else {
+        sageLastModelUsed = 'rule-engine';
+      }
+
+      // 合併規則初篩結果與 AI 語意關聯結果
+      const mergedMap = new Map();
+      candidateGroups.forEach(cg => mergedMap.set(cg.id, cg));
+
+      aiGroupMap.forEach((ag, k) => {
+        const matchedTickets = (ticketsRows || []).filter(t =>
+          Array.isArray(ag.ticket_ids) && ag.ticket_ids.includes(t.service_id)
+        );
+        const matchedChats = (chatRows || []).filter(c =>
+          c.message_role === 'user' && Array.isArray(ag.chat_session_ids) && ag.chat_session_ids.includes(c.session_id)
+        );
+
+        if (mergedMap.has(k)) {
+          const base = mergedMap.get(k);
+          base.topic = ag.topic || base.topic;
+          base.unit = ag.unit || base.unit;
+          base.isP1 = Boolean(ag.is_p1) || base.isP1;
+          base.aiConfidence = Number(ag.confidence || 0);
+          base.rootCauseHypothesis = String(ag.root_cause_hypothesis || '');
+          base.aiSummary = String(ag.ai_summary || '');
+          base.recommendedAction = String(ag.recommended_action || '');
+          base.modelUsed = sageLastModelUsed;
+          if (matchedTickets.length > 0) base.tickets = matchedTickets;
+          if (matchedChats.length > 0) base.chats = matchedChats;
+        } else {
+          mergedMap.set(k, {
+            id: k,
+            topic: String(ag.topic || '共同事件群組'),
+            unit: String(ag.unit || '多單位'),
+            tickets: matchedTickets,
+            chats: matchedChats,
+            isP1: Boolean(ag.is_p1),
+            aiConfidence: Number(ag.confidence || 0),
+            rootCauseHypothesis: String(ag.root_cause_hypothesis || ''),
+            aiSummary: String(ag.ai_summary || ''),
+            recommendedAction: String(ag.recommended_action || ''),
+            modelUsed: sageLastModelUsed,
+            latestTime: new Date().toISOString()
+          });
+        }
+      });
+
+      sageGroups = Array.from(mergedMap.values())
+        .filter(grp => !sageDismissedIds.has(grp.id))
+        .map((grp) => {
+          const dbRec = dbIncidentsMap.get(grp.id);
+          if (dbRec && !grp.rootCauseHypothesis) {
+            grp.rootCauseHypothesis = dbRec.root_cause_hypothesis || '';
+            grp.aiSummary = dbRec.ai_summary || '';
+            grp.recommendedAction = dbRec.recommended_action || '';
+            grp.aiConfidence = Number(dbRec.ai_confidence || grp.aiConfidence || 0);
+          }
+          const totalSignals = grp.tickets.length + grp.chats.length;
+          let state = 'OBSERVING';
+          if (sageConfirmedIds.has(grp.id) || dbRec?.status === 'CONFIRMED') {
+            state = 'CONFIRMED';
+          } else if (grp.isP1 || grp.aiConfidence >= 0.75 || totalSignals >= 2) {
+            state = 'SUSPECT';
+          }
+          return { ...grp, state, totalSignals };
+        })
+        .sort((a, b) => new Date(b.latestTime || 0) - new Date(a.latestTime || 0));
+
+      if ((!sageSelectedGroupId || !sageGroups.some(g => g.id === sageSelectedGroupId)) && sageGroups.length > 0) {
         sageSelectedGroupId = sageGroups[0].id;
       }
 
@@ -3999,7 +4157,7 @@ ${stepsText}
 
     window.fetchSageIncidentsFromSupabase = async function() {
       if (!supabaseClient) {
-        window.runSageCorrelationScan([], []);
+        await window.runSageCorrelationScan([], []);
         return;
       }
       try {
@@ -4009,10 +4167,10 @@ ${stepsText}
         ]);
         const tRows = (!tkRes.error && Array.isArray(tkRes.data)) ? tkRes.data : [];
         const cRows = (!chRes.error && Array.isArray(chRes.data)) ? chRes.data : [];
-        window.runSageCorrelationScan(tRows, cRows);
+        await window.runSageCorrelationScan(tRows, cRows);
       } catch (err) {
         console.warn("載入 SAGE 事件資料異常:", err);
-        window.runSageCorrelationScan([], []);
+        await window.runSageCorrelationScan([], []);
       }
     };
 
@@ -4021,9 +4179,62 @@ ${stepsText}
       renderSageWorkbench();
     };
 
-    window.confirmSageGroup = function(groupId) {
+    window.confirmSageGroup = async function(groupId) {
       sageConfirmedIds.add(groupId);
-      window.fetchSageIncidentsFromSupabase();
+      const target = sageGroups.find(g => g.id === groupId);
+      if (supabaseClient && target) {
+        try {
+          await supabaseClient.from('sage_incidents').upsert([{
+            group_key: target.id,
+            topic: target.topic,
+            unit: target.unit,
+            status: 'CONFIRMED',
+            is_common_incident: true,
+            is_p1: target.isP1,
+            ai_confidence: target.aiConfidence || 0.9,
+            root_cause_hypothesis: target.rootCauseHypothesis || '',
+            ai_summary: target.aiSummary || '',
+            recommended_action: target.recommendedAction || '',
+            ticket_ids: target.tickets.map(t => t.service_id).filter(Boolean),
+            chat_session_ids: target.chats.map(c => c.session_id).filter(Boolean),
+            ticket_count: target.tickets.length,
+            chat_count: target.chats.length,
+            model_used: target.modelUsed || sageLastModelUsed,
+            confirmed_by: currentUser?.name || 'Admin',
+            confirmed_at: new Date().toISOString()
+          }], { onConflict: 'group_key' });
+        } catch (err) {
+          console.warn("寫入 sage_incidents 確認狀態異常:", err);
+        }
+      }
+      await window.fetchSageIncidentsFromSupabase();
+    };
+
+    window.dismissSageGroup = async function(groupId) {
+      sageDismissedIds.add(groupId);
+      const target = sageGroups.find(g => g.id === groupId);
+      if (supabaseClient && target) {
+        try {
+          await supabaseClient.from('sage_incidents').upsert([{
+            group_key: target.id,
+            topic: target.topic,
+            unit: target.unit,
+            status: 'DISMISSED',
+            is_common_incident: false,
+            is_p1: target.isP1,
+            ai_confidence: target.aiConfidence || 0,
+            root_cause_hypothesis: target.rootCauseHypothesis || '',
+            ai_summary: target.aiSummary || '',
+            ticket_count: target.tickets.length,
+            chat_count: target.chats.length,
+            confirmed_by: currentUser?.name || 'Admin',
+            confirmed_at: new Date().toISOString()
+          }], { onConflict: 'group_key' });
+        } catch (err) {
+          console.warn("寫入 sage_incidents 排除狀態異常:", err);
+        }
+      }
+      await window.fetchSageIncidentsFromSupabase();
     };
 
     window.triggerSageNotificationDraft = function() {
@@ -4035,12 +4246,14 @@ ${stepsText}
         return;
       }
       const level = target.isP1 ? "P1 緊急／疑似重大事件" : (target.state === 'SUSPECT' ? "疑似共同事件" : "持續觀察事件");
+      const confPct = target.aiConfidence ? `${Math.round(target.aiConfidence * 100)}%` : '規則判定';
       box.innerText = `【SAGE 事件通報摘要】
 事件類別：${target.topic}
 涉及單位／位置：${target.unit}
-研判等級：${level}
+研判等級：${level}（AI 信心度：${confPct}｜引擎：${target.modelUsed || sageLastModelUsed}）
 關聯報修單數：${target.tickets.length} 筆｜關聯使用者諮詢：${target.chats.length} 則
-建議處置：請值班工程師確認受影響範圍與設備／系統狀態，必要時啟動跨單位通報與升級處理。`;
+推測共同根因：${target.rootCauseHypothesis || '同區域／同系統連續出現相似異常，待現場確認'}
+建議處置：${target.recommendedAction || '請值班工程師確認受影響範圍與設備／系統狀態，必要時啟動跨單位通報與升級處理。'}`;
       window.switchSageSubTab('notify');
     };
 
@@ -4049,7 +4262,7 @@ ${stepsText}
       const filtered = sageGroups.filter(g => {
         if (sageFilterStatus !== 'ALL' && g.state !== sageFilterStatus) return false;
         if (!q) return true;
-        return `${g.topic} ${g.unit}`.toLowerCase().includes(q);
+        return `${g.topic} ${g.unit} ${g.rootCauseHypothesis || ''}`.toLowerCase().includes(q);
       });
 
       const totalLabel = document.getElementById('sageGroupTotalLabel');
@@ -4075,12 +4288,15 @@ ${stepsText}
               : (g.state === 'SUSPECT'
                 ? '<span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-900/70 text-amber-300 border border-amber-600/50">疑似事件</span>'
                 : '<span class="px-1.5 py-0.5 rounded text-[10px] bg-indigo-900/70 text-indigo-300 border border-indigo-600/50">觀案中</span>');
+            const confBadge = g.aiConfidence > 0
+              ? `<span class="text-[10px] text-sky-300 font-mono">AI ${Math.round(g.aiConfidence * 100)}%</span>`
+              : '';
             return `
-              <div onclick="selectSageGroup('${g.id.replace(/'/g, "\'")}')"
+              <div onclick="selectSageGroup('${g.id.replace(/'/g, "'")}')"
                    class="p-2.5 rounded-lg border cursor-pointer transition ${active ? 'bg-indigo-950/70 border-indigo-400' : 'bg-slate-900/70 border-slate-700 hover:border-slate-500'}">
                 <div class="flex items-center justify-between gap-2">
                   <span class="text-xs font-bold text-white truncate">${g.topic}</span>
-                  ${badge}
+                  <div class="flex items-center gap-1 shrink-0">${confBadge}${badge}</div>
                 </div>
                 <div class="text-[11px] text-slate-400 mt-1 truncate">${g.unit}</div>
                 <div class="text-[10px] text-slate-500 mt-1 font-mono">報修 ${g.tickets.length} 筆 · 諮詢 ${g.chats.length} 則</div>
@@ -4114,22 +4330,38 @@ ${stepsText}
             </div>
           `).join('') || '<div class="text-slate-500">此群組目前無關聯對話</div>';
 
+          const aiBoxHtml = (cur.rootCauseHypothesis || cur.aiSummary) ? `
+            <div class="bg-indigo-950/60 border border-indigo-500/40 rounded-lg p-2.5 space-y-1 text-[11px]">
+              <div class="flex items-center justify-between text-indigo-300 font-bold">
+                <span>⚡ AI 語意關聯研判（${cur.modelUsed || sageLastModelUsed}）</span>
+                ${cur.aiConfidence > 0 ? `<span class="font-mono text-sky-300">信心度 ${Math.round(cur.aiConfidence * 100)}%</span>` : ''}
+              </div>
+              ${cur.aiSummary ? `<div class="text-slate-200">${cur.aiSummary}</div>` : ''}
+              ${cur.rootCauseHypothesis ? `<div class="text-amber-200"><b>推測共同根因：</b>${cur.rootCauseHypothesis}</div>` : ''}
+              ${cur.recommendedAction ? `<div class="text-emerald-200"><b>建議處置：</b>${cur.recommendedAction}</div>` : ''}
+            </div>
+          ` : '';
+
           detailEl.innerHTML = `
-            <div class="space-y-3 overflow-y-auto max-h-[300px]">
+            <div class="space-y-3 overflow-y-auto max-h-[340px]">
               <div class="flex flex-wrap justify-between items-start gap-2 border-b border-slate-700 pb-2.5">
                 <div>
                   <div class="text-sm font-bold text-white">${cur.topic}</div>
                   <div class="text-[11px] text-slate-400 mt-0.5">涉及單位／位置：${cur.unit}</div>
                 </div>
                 <div class="flex items-center gap-1.5">
-                  <button onclick="confirmSageGroup('${cur.id.replace(/'/g, "\'")}')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold">
+                  <button onclick="confirmSageGroup('${cur.id.replace(/'/g, "'")}')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold">
                     ✓ 確認共同事件
+                  </button>
+                  <button onclick="dismissSageGroup('${cur.id.replace(/'/g, "'")}')" class="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-[11px]">
+                    ✕ 獨立個案
                   </button>
                   <button onclick="triggerSageNotificationDraft()" class="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-[11px] font-bold">
                     📣 事件通報
                   </button>
                 </div>
               </div>
+              ${aiBoxHtml}
               <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                 <div class="space-y-1.5">
                   <div class="text-[11px] font-bold text-sky-300">🎫 關聯報修案件 (${cur.tickets.length})</div>
@@ -4149,15 +4381,30 @@ ${stepsText}
         if (sageGroups.length === 0) {
           auditEl.innerHTML = '<div class="text-slate-500">目前尚無待審核事件群組。</div>';
         } else {
-          auditEl.innerHTML = sageGroups.map(g => `
+          const confirmedCount = sageGroups.filter(g => g.state === 'CONFIRMED').length;
+          const totalAudited = confirmedCount + sageDismissedIds.size;
+          const precisionHint = totalAudited > 0
+            ? `已審核 ${totalAudited} 組（確認共同事件 ${confirmedCount} 組，標記獨立個案 ${sageDismissedIds.size} 組，確認率 ${Math.round((confirmedCount / totalAudited) * 100)}%）`
+            : '尚未累積人工審核樣本，點擊下方按鈕可記錄辨識準確率回饋';
+
+          auditEl.innerHTML = `
+            <div class="p-2.5 bg-slate-900/90 border border-indigo-500/30 rounded-lg text-[11px] text-indigo-200 mb-2">
+              📊 <b>SAGE 辨識準確率追蹤：</b>${precisionHint}
+            </div>
+          ` + sageGroups.map(g => `
             <div class="p-3 bg-slate-900/80 border border-slate-700 rounded-lg flex flex-wrap justify-between items-center gap-2">
               <div>
                 <div class="font-bold text-white">${g.topic} <span class="text-slate-400 font-normal">(${g.unit})</span></div>
-                <div class="text-[11px] text-slate-400">狀態：${g.state} · 報修 ${g.tickets.length} 筆 · 諮詢 ${g.chats.length} 則</div>
+                <div class="text-[11px] text-slate-400">狀態：${g.state} · 報修 ${g.tickets.length} 筆 · 諮詢 ${g.chats.length} 則 ${g.aiConfidence > 0 ? `· AI 信心度 ${Math.round(g.aiConfidence * 100)}%` : ''}</div>
               </div>
-              <button onclick="confirmSageGroup('${g.id.replace(/'/g, "\'")}')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold">
-                標記為已確認
-              </button>
+              <div class="flex items-center gap-1.5">
+                <button onclick="confirmSageGroup('${g.id.replace(/'/g, "'")}')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold">
+                  ✓ 確認共同事件
+                </button>
+                <button onclick="dismissSageGroup('${g.id.replace(/'/g, "'")}')" class="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-[11px]">
+                  ✕ 獨立個案
+                </button>
+              </div>
             </div>
           `).join('');
         }
