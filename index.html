@@ -659,43 +659,102 @@
             </div>
           </div>
 
-          <!-- 子分頁 2：通報事件與規範 -->
-          <div id="sageSubNotify" class="hidden bg-slate-800/90 border border-slate-700 rounded-xl p-4 space-y-3">
+          <!-- 子分頁 2：通報事件與規範（含事件通報線索登錄與相符比對） -->
+          <div id="sageSubNotify" class="hidden bg-slate-800/90 border border-slate-700 rounded-xl p-4 space-y-4">
             <div class="flex flex-wrap justify-between items-center gap-2">
               <div>
-                <h4 class="text-sm font-bold text-white">通報事件與分級規範</h4>
-                <p class="text-[11px] text-slate-400">當同系統、同單位或同類故障在短時間內達門檻，或標記 P1 緊急／疑似重大事件時，自動標示並支援通報。</p>
+                <h4 class="text-sm font-bold text-white">通報事件線索與 Alert（P1～P5）分級規範</h4>
+                <p class="text-[11px] text-slate-400">案件原始緊急度（urgency）與系統預警等級（Alert P1～P5）嚴格分離；登錄通報線索後可比對相符報修並產出通報摘要。</p>
               </div>
               <button onclick="triggerSageNotificationDraft()" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold transition">
                 📣 產生事件通報摘要
               </button>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs">
-              <div class="bg-slate-900/80 border border-rose-500/40 rounded-lg p-3">
-                <div class="font-bold text-rose-300 mb-1">P1 疑似重大／緊急事件</div>
-                <p class="text-[11px] text-slate-300 leading-relaxed">多人／多診間或核心系統受影響、資安異常或勒索警示：立即優先通報值班工程師與管理單位。</p>
+
+            <!-- 新增事件通報線索表單 -->
+            <form onsubmit="handleCreateSageNotification(event)" class="bg-slate-900/90 border border-slate-700 rounded-xl p-3 space-y-2.5 text-xs">
+              <div class="font-bold text-sky-300">➕ 新增事件通報線索（提供比對關鍵字、範圍與服務中斷資訊）</div>
+              <div class="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                <div>
+                  <label class="block text-[11px] text-slate-400 mb-1">通報類型</label>
+                  <select id="ntf_dispatch_type" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white">
+                    <option value="一般案件">一般案件</option>
+                    <option value="資安">資安</option>
+                    <option value="服務異常">服務異常</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-[11px] text-slate-400 mb-1">廠區／單位範圍</label>
+                  <input id="ntf_company_plant" type="text" value="全部廠區" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-slate-400 mb-1">系統／裝置範圍</label>
+                  <input id="ntf_device_model" type="text" value="所有型號／系統" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-slate-400 mb-1">比對關鍵字（逗號分隔）</label>
+                  <input id="ntf_keywords" type="text" placeholder="例：VPN, 登入逾時, 讀卡機" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white">
+                </div>
               </div>
-              <div class="bg-slate-900/80 border border-amber-500/40 rounded-lg p-3">
-                <div class="font-bold text-amber-300 mb-1">疑似共同事件聚類</div>
-                <p class="text-[11px] text-slate-300 leading-relaxed">不同同仁描述相似症狀、系統或設備／廠區，系統自動歸群供值班人員確認是否為共同事件。</p>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
+                <input id="ntf_problem_desc" type="text" required placeholder="輸入通報問題說明（作為語意與上下文比對線索）..."
+                       class="sm:col-span-2 bg-slate-800 border border-slate-600 rounded px-2.5 py-1.5 text-xs text-white">
+                <div class="flex items-center justify-between gap-2">
+                  <label class="flex items-center gap-1 text-[11px] text-amber-300 cursor-pointer">
+                    <input id="ntf_reporting_unavail" type="checkbox" class="rounded">
+                    <span>無法正常報修</span>
+                  </label>
+                  <button type="submit" class="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded font-bold text-xs">
+                    登錄通報
+                  </button>
+                </div>
               </div>
-              <div class="bg-slate-900/80 border border-indigo-500/40 rounded-lg p-3">
-                <div class="font-bold text-indigo-300 mb-1">持續觀察群組</div>
-                <p class="text-[11px] text-slate-300 leading-relaxed">跨時段持續追蹤同一類問題的演變與復發頻率，不因單一觀察視窗結束而中斷。</p>
+            </form>
+
+            <!-- 已登錄通報線索清單 -->
+            <div class="space-y-1.5">
+              <div class="text-xs font-bold text-slate-200">📋 近期事件通報線索（<span id="sageNotifCountLabel">0</span> 筆）</div>
+              <div id="sageNotificationList" class="space-y-1.5 max-h-40 overflow-y-auto text-[11px] text-slate-400">
+                尚無事件通報線索。
               </div>
             </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs">
+              <div class="bg-slate-900/80 border border-rose-500/40 rounded-lg p-3">
+                <div class="font-bold text-rose-300 mb-1">Alert P1～P2 高優先預警</div>
+                <p class="text-[11px] text-slate-300 leading-relaxed">核心系統／多點異常、資安嚴重事件或門檻達標時提升預警等級；不覆蓋報修單原始 urgency。</p>
+              </div>
+              <div class="bg-slate-900/80 border border-amber-500/40 rounded-lg p-3">
+                <div class="font-bold text-amber-300 mb-1">Alert P3～P4 中低預警</div>
+                <p class="text-[11px] text-slate-300 leading-relaxed">具共同線索但影響範圍有限或尚在觀察中，保留證據與反向證據供審核判定。</p>
+              </div>
+              <div class="bg-slate-900/80 border border-indigo-500/40 rounded-lg p-3">
+                <div class="font-bold text-indigo-300 mb-1">Alert P5 觀察／基線</div>
+                <p class="text-[11px] text-slate-300 leading-relaxed">群組持續追蹤，不受單一觀察視窗結束影響；若含「已恢復」或裝置衝突則降權防誤判。</p>
+              </div>
+            </div>
+
             <div id="sageNotifyPreviewBox" class="bg-slate-900 border border-slate-700 rounded-lg p-3 text-[11px] text-slate-300 whitespace-pre-line">
               尚未產生通報摘要，請在「事件情報中心」選取群組或點擊上方按鈕產生。
             </div>
           </div>
 
-          <!-- 子分頁 3：事件審核中心 -->
+          <!-- 子分頁 3：事件審核中心（含關聯明細、Alert 分級與 Major Incident 申請／核准） -->
           <div id="sageSubAudit" class="hidden bg-slate-800/90 border border-slate-700 rounded-xl p-4 space-y-3">
             <h4 class="text-sm font-bold text-white">事件審核中心</h4>
-            <p class="text-[11px] text-slate-400">值班人員／管理者可於此確認疑似共同事件、調整觀察狀態，或將重複發生的故障沉澱為知識庫 SOP。</p>
+            <p class="text-[11px] text-slate-400">可檢視各群組「已確認關聯／待確認案件」明細、指定 Alert（P1～P5）、確認／排除共同事件，或提出 Major Incident 升級與核准。</p>
             <div id="sageAuditList" class="space-y-2 text-xs text-slate-400">
               目前尚無待審核事件群組。
             </div>
+          </div>
+
+          <!-- 審核明細與關聯案件檢視 Modal（內嵌於工作台區塊） -->
+          <div id="sageDetailModal" class="hidden bg-slate-900 border-2 border-indigo-500/70 rounded-xl p-4 space-y-3 shadow-2xl">
+            <div class="flex justify-between items-center border-b border-slate-700 pb-2">
+              <div id="sageDetailModalTitle" class="text-sm font-bold text-white">事件關聯明細與審核</div>
+              <button onclick="closeSageDetailModal()" class="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 rounded text-xs text-slate-200">關閉明細 ✕</button>
+            </div>
+            <div id="sageDetailModalBody" class="space-y-3 text-xs text-slate-200"></div>
           </div>
         </div>
       </div>
@@ -3871,14 +3930,18 @@ ${stepsText}
     };
 
     // ==========================================
-    // N. SAGE 事件辨識、多客戶隔離與通報工作台
+    // N. SAGE 事件辨識、Alert 分級、通報比對與審核明細
     // ==========================================
     let sageGroups = [];
+    let sageNotifications = [];
     let sageSelectedGroupId = null;
     let sageFilterStatus = 'ALL';
     let sageSelectedClient = 'ALL';
     let sageConfirmedIds = new Set();
     let sageDismissedIds = new Set();
+    let sageAlertOverrides = new Map();
+    let sageAuditReasons = new Map();
+    let sageMajorIncidentMap = new Map();
     let sageLastModelUsed = 'rule-only';
 
     function normalizeCompanyName(rawName) {
@@ -3908,7 +3971,6 @@ ${stepsText}
       const prev = sageSelectedClient || sel.value || 'ALL';
       const clients = new Set();
 
-      // 1. 主要來源：依註冊帳號資料表 (profiles.company) 建立客戶選單
       (profileRows || []).forEach(p => {
         if (p && p.status !== 'rejected') {
           const compName = normalizeCompanyName(p.company);
@@ -3916,7 +3978,6 @@ ${stepsText}
         }
       });
 
-      // 2. 兼容歷史報修、對話與事件資料中的客戶識別
       (ticketsRows || []).forEach(t => { const id = resolveRowTenantId(t); if (id && id !== 'DEFAULT_CLIENT') clients.add(id); });
       (chatRows || []).forEach(c => { const id = resolveRowTenantId(c); if (id && id !== 'DEFAULT_CLIENT') clients.add(id); });
       (dbIncRows || []).forEach(d => { const id = normalizeCompanyName(d.tenant_id); if (id && id !== 'ALL' && id !== 'DEFAULT_CLIENT') clients.add(id); });
@@ -3977,15 +4038,56 @@ ${stepsText}
       return '一般設備與服務事件';
     }
 
-    function buildRuleCandidateGroups(ticketsRows = [], chatRows = []) {
+    function inspectEvidenceSignals(text) {
+      const raw = String(text || '').toLowerCase();
+      const hasRecovery = /(已恢復|已排除|恢復正常|測試完成|沒事了|誤報)/.test(raw);
+      const isGenericOnly = /^(不能用|很慢|卡住|有問題|故障|異常)$/.test(raw.trim());
+      return { hasRecovery, isGenericOnly };
+    }
+
+    function computeAlertLevel(grp) {
+      if (sageAlertOverrides.has(grp.id)) {
+        return sageAlertOverrides.get(grp.id);
+      }
+      const nCount = (grp.matchedNotifications || []).length;
+      const tCount = (grp.tickets || []).length;
+      const hasSevereNotif = (grp.matchedNotifications || []).some(
+        n => n.severity === 'severe' || n.reporting_unavailable === true || n.dispatch_type === '資安'
+      );
+      if (hasSevereNotif || (nCount > 0 && tCount >= 3)) return 'P1';
+      if (nCount > 0 && tCount >= 1) return 'P2';
+      if (tCount >= 3 || (grp.aiConfidence >= 0.85 && tCount >= 2)) return 'P3';
+      if (tCount >= 2 || grp.aiConfidence >= 0.75) return 'P4';
+      return 'P5';
+    }
+
+    function matchNotificationsToGroup(grp, notifRows = []) {
+      const haystack = `${grp.topic} ${grp.unit} ${(grp.tickets || []).map(t => `${t.device_model || ''} ${t.problem_description || ''}`).join(' ')}`.toLowerCase();
+      return (notifRows || []).filter(n => {
+        const nTenant = resolveRowTenantId(n);
+        if (grp.tenantId && nTenant && nTenant !== 'DEFAULT_CLIENT' && nTenant !== 'ALL' && nTenant !== grp.tenantId) {
+          return false;
+        }
+        const kws = Array.isArray(n.keywords) ? n.keywords : String(n.keywords || '').split(/[,，、\s]+/).filter(Boolean);
+        const desc = String(n.problem_description || '').toLowerCase();
+        const kwHit = kws.some(kw => kw && haystack.includes(String(kw).trim().toLowerCase()));
+        const descHit = desc && classifySageTopic(desc) === grp.topic;
+        return kwHit || descHit;
+      });
+    }
+
+    function buildRuleCandidateGroups(ticketsRows = [], chatRows = [], notifRows = []) {
       const clusterMap = new Map();
 
       (ticketsRows || []).forEach((t) => {
         const tenant = resolveRowTenantId(t);
         const desc = `${t.device_model || ''} ${t.problem_description || ''}`;
         const topic = classifySageTopic(desc);
+        const sig = inspectEvidenceSignals(t.problem_description || '');
         const unit = t.company_plant || t.location || '未標示單位';
-        const key = `${tenant}__${topic}__${unit}`;
+        const bucketSuffix = sig.hasRecovery ? `${unit}__已恢復` : (sig.isGenericOnly ? `${unit}__待確認` : unit);
+        const key = `${tenant}__${topic}__${bucketSuffix}`;
+
         if (!clusterMap.has(key)) {
           clusterMap.set(key, {
             id: key,
@@ -3993,10 +4095,15 @@ ${stepsText}
             topic,
             unit,
             tickets: [],
+            pendingTickets: [],
             chats: [],
+            matchedNotifications: [],
             isP1: false,
+            alertLevel: 'P5',
+            ruleCode: 'C1',
             aiConfidence: 0,
             rootCauseHypothesis: '',
+            counterEvidence: sig.hasRecovery ? '案件描述包含已恢復／已排除語境' : '無明顯反向證據',
             aiSummary: '',
             recommendedAction: '',
             modelUsed: 'rule-engine',
@@ -4004,9 +4111,13 @@ ${stepsText}
           });
         }
         const grp = clusterMap.get(key);
-        grp.tickets.push(t);
-        if (String(t.urgency || '').includes('P1') || String(t.problem_description || '').includes('P1')) {
-          grp.isP1 = true;
+        if (sig.isGenericOnly && !sig.hasRecovery) {
+          grp.pendingTickets.push(t);
+        } else {
+          grp.tickets.push(t);
+        }
+        if (sig.hasRecovery) {
+          grp.counterEvidence = '包含已恢復或已排除描述，已隔離避免誤判連鎖';
         }
         if (new Date(t.created_at || 0) > new Date(grp.latestTime || 0)) {
           grp.latestTime = t.created_at;
@@ -4025,12 +4136,14 @@ ${stepsText}
       userChatSessions.forEach((c) => {
         const content = String(c.message_content || '');
         if (!content || content.startsWith('[')) return;
+        const sig = inspectEvidenceSignals(content);
+        if (sig.isGenericOnly) return;
         const tenant = resolveRowTenantId(c);
         const topic = classifySageTopic(content);
         const unit = c.company ? `${c.company}${c.jurisdiction ? ` (${c.jurisdiction})` : ''}` : (c.jurisdiction || '一般單位');
         let matchedKey = null;
         for (const [k, grp] of clusterMap.entries()) {
-          if (grp.tenantId === tenant && grp.topic === topic) {
+          if (grp.tenantId === tenant && grp.topic === topic && !k.endsWith('__已恢復') && !k.endsWith('__待確認')) {
             matchedKey = k;
             break;
           }
@@ -4043,10 +4156,15 @@ ${stepsText}
             topic,
             unit,
             tickets: [],
+            pendingTickets: [],
             chats: [],
+            matchedNotifications: [],
             isP1: false,
+            alertLevel: 'P5',
+            ruleCode: 'C1',
             aiConfidence: 0,
             rootCauseHypothesis: '',
+            counterEvidence: '無明顯反向證據',
             aiSummary: '',
             recommendedAction: '',
             modelUsed: 'rule-engine',
@@ -4060,10 +4178,20 @@ ${stepsText}
         }
       });
 
-      return Array.from(clusterMap.values());
+      return Array.from(clusterMap.values()).map(grp => {
+        const matchedNotifs = matchNotificationsToGroup(grp, notifRows);
+        const alertLevel = computeAlertLevel({ ...grp, matchedNotifications: matchedNotifs });
+        return {
+          ...grp,
+          matchedNotifications: matchedNotifs,
+          alertLevel,
+          ruleCode: matchedNotifs.length > 0 ? 'C10' : 'C1',
+          isP1: alertLevel === 'P1'
+        };
+      });
     }
 
-    async function callSageCorrelateGateway(ticketsRows, chatRows, candidateGroups) {
+    async function callSageCorrelateGateway(ticketsRows, chatRows, notifRows, candidateGroups) {
       try {
         const res = await fetchWithTimeout(EDGE_GATEWAY_URL, {
           method: "POST",
@@ -4094,6 +4222,17 @@ ${stepsText}
               message_content: String(c.message_content || '').slice(0, 180),
               created_at: c.created_at
             })),
+            notifications: (notifRows || []).slice(0, 20).map(n => ({
+              tenant_id: resolveRowTenantId(n),
+              notification_id: n.notification_id,
+              dispatch_type: n.dispatch_type,
+              company_plant: n.company_plant,
+              device_model: n.device_model,
+              severity: n.severity,
+              reporting_unavailable: Boolean(n.reporting_unavailable),
+              keywords: n.keywords || [],
+              problem_description: String(n.problem_description || '').slice(0, 160)
+            })),
             candidate_groups: candidateGroups.slice(0, 12).map(g => ({
               tenant_id: g.tenantId,
               group_key: g.id,
@@ -4116,7 +4255,7 @@ ${stepsText}
       return null;
     }
 
-    window.runSageCorrelationScan = async function(ticketsRows = null, chatRows = null) {
+    window.runSageCorrelationScan = async function(ticketsRows = null, chatRows = null, notifRows = null) {
       if (!Array.isArray(ticketsRows) || !Array.isArray(chatRows)) {
         await window.fetchSageIncidentsFromSupabase();
         return;
@@ -4128,8 +4267,14 @@ ${stepsText}
       const scopedChats = sageSelectedClient === 'ALL'
         ? chatRows
         : chatRows.filter(c => resolveRowTenantId(c) === sageSelectedClient);
+      const scopedNotifs = sageSelectedClient === 'ALL'
+        ? (notifRows || sageNotifications)
+        : (notifRows || sageNotifications).filter(n => {
+            const nt = resolveRowTenantId(n);
+            return nt === sageSelectedClient || nt === 'ALL' || nt === 'DEFAULT_CLIENT';
+          });
 
-      const candidateGroups = buildRuleCandidateGroups(scopedTickets, scopedChats);
+      const candidateGroups = buildRuleCandidateGroups(scopedTickets, scopedChats, scopedNotifs);
 
       let dbIncidentsMap = new Map();
       if (supabaseClient) {
@@ -4148,6 +4293,17 @@ ${stepsText}
               dbIncidentsMap.set(row.group_key, row);
               if (row.status === 'CONFIRMED') sageConfirmedIds.add(row.group_key);
               if (row.status === 'DISMISSED') sageDismissedIds.add(row.group_key);
+              if (row.alert_level && ['P1', 'P2', 'P3', 'P4', 'P5'].includes(row.alert_level)) {
+                sageAlertOverrides.set(row.group_key, row.alert_level);
+              }
+              if (row.audit_reason) sageAuditReasons.set(row.group_key, row.audit_reason);
+              if (row.major_incident_status && row.major_incident_status !== 'NONE') {
+                sageMajorIncidentMap.set(row.group_key, {
+                  status: row.major_incident_status,
+                  reason: row.major_incident_reason || '',
+                  decidedBy: row.major_incident_decided_by || ''
+                });
+              }
             });
           }
         } catch (_err) {
@@ -4155,7 +4311,7 @@ ${stepsText}
         }
       }
 
-      const aiCorrelated = await callSageCorrelateGateway(scopedTickets, scopedChats, candidateGroups);
+      const aiCorrelated = await callSageCorrelateGateway(scopedTickets, scopedChats, scopedNotifs, candidateGroups);
       const aiGroupMap = new Map();
       if (aiCorrelated && Array.isArray(aiCorrelated.groups)) {
         sageLastModelUsed = aiCorrelated.modelUsed;
@@ -4178,30 +4334,44 @@ ${stepsText}
         const matchedChats = scopedChats.filter(c =>
           c.message_role === 'user' && Array.isArray(ag.chat_session_ids) && ag.chat_session_ids.includes(c.session_id)
         );
+        const aiAlert = ['P1', 'P2', 'P3', 'P4', 'P5'].includes(String(ag.alert_level || '').toUpperCase())
+          ? String(ag.alert_level).toUpperCase()
+          : null;
 
         if (mergedMap.has(k)) {
           const base = mergedMap.get(k);
           base.topic = ag.topic || base.topic;
           base.unit = ag.unit || base.unit;
-          base.isP1 = Boolean(ag.is_p1) || base.isP1;
           base.aiConfidence = Number(ag.confidence || 0);
           base.rootCauseHypothesis = String(ag.root_cause_hypothesis || '');
+          base.counterEvidence = String(ag.counter_evidence || base.counterEvidence || '無明顯反向證據');
           base.aiSummary = String(ag.ai_summary || '');
           base.recommendedAction = String(ag.recommended_action || '');
+          base.ruleCode = String(ag.rule_code || base.ruleCode || 'C1');
           base.modelUsed = sageLastModelUsed;
+          if (aiAlert && !sageAlertOverrides.has(base.id)) {
+            base.alertLevel = aiAlert;
+          }
+          base.isP1 = base.alertLevel === 'P1';
           if (matchedTickets.length > 0) base.tickets = matchedTickets;
           if (matchedChats.length > 0) base.chats = matchedChats;
         } else {
+          const fallbackAlert = aiAlert || (ag.is_p1 ? 'P1' : 'P4');
           mergedMap.set(k, {
             id: k,
             tenantId: ag.tenantId || (sageSelectedClient !== 'ALL' ? sageSelectedClient : 'DEFAULT_CLIENT'),
             topic: String(ag.topic || '共同事件群組'),
             unit: String(ag.unit || '多單位'),
             tickets: matchedTickets,
+            pendingTickets: [],
             chats: matchedChats,
-            isP1: Boolean(ag.is_p1),
+            matchedNotifications: [],
+            isP1: fallbackAlert === 'P1',
+            alertLevel: fallbackAlert,
+            ruleCode: String(ag.rule_code || 'C1'),
             aiConfidence: Number(ag.confidence || 0),
             rootCauseHypothesis: String(ag.root_cause_hypothesis || ''),
+            counterEvidence: String(ag.counter_evidence || '無明顯反向證據'),
             aiSummary: String(ag.ai_summary || ''),
             recommendedAction: String(ag.recommended_action || ''),
             modelUsed: sageLastModelUsed,
@@ -4216,18 +4386,28 @@ ${stepsText}
           const dbRec = dbIncidentsMap.get(grp.id);
           if (dbRec && !grp.rootCauseHypothesis) {
             grp.rootCauseHypothesis = dbRec.root_cause_hypothesis || '';
+            grp.counterEvidence = dbRec.counter_evidence || grp.counterEvidence || '無明顯反向證據';
             grp.aiSummary = dbRec.ai_summary || '';
             grp.recommendedAction = dbRec.recommended_action || '';
             grp.aiConfidence = Number(dbRec.ai_confidence || grp.aiConfidence || 0);
           }
+          const finalAlert = sageAlertOverrides.get(grp.id)
+            || (dbRec?.alert_level && ['P1', 'P2', 'P3', 'P4', 'P5'].includes(dbRec.alert_level) ? dbRec.alert_level : grp.alertLevel);
           const totalSignals = grp.tickets.length + grp.chats.length;
           let state = 'OBSERVING';
           if (sageConfirmedIds.has(grp.id) || dbRec?.status === 'CONFIRMED') {
             state = 'CONFIRMED';
-          } else if (grp.isP1 || grp.aiConfidence >= 0.75 || totalSignals >= 2) {
+          } else if (finalAlert === 'P1' || finalAlert === 'P2' || grp.aiConfidence >= 0.75 || totalSignals >= 2) {
             state = 'SUSPECT';
           }
-          return { ...grp, state, totalSignals };
+          return {
+            ...grp,
+            alertLevel: finalAlert,
+            isP1: finalAlert === 'P1',
+            majorIncident: sageMajorIncidentMap.get(grp.id) || { status: dbRec?.major_incident_status || 'NONE', reason: dbRec?.major_incident_reason || '' },
+            state,
+            totalSignals
+          };
         })
         .sort((a, b) => new Date(b.latestTime || 0) - new Date(a.latestTime || 0));
 
@@ -4246,43 +4426,137 @@ ${stepsText}
       if (susEl) susEl.innerText = susCount;
       if (tkEl) tkEl.innerText = tkCount;
 
+      renderSageNotificationList(scopedNotifs);
       renderSageWorkbench();
     };
 
     window.fetchSageIncidentsFromSupabase = async function() {
       if (!supabaseClient) {
         populateSageClientSelector([], [], [], []);
-        await window.runSageCorrelationScan([], []);
+        await window.runSageCorrelationScan([], [], []);
         return;
       }
       try {
-        const [profRes, tkRes, chRes, incRes] = await Promise.all([
+        const [profRes, tkRes, chRes, incRes, ntfRes] = await Promise.all([
           supabaseClient.from('profiles').select('company, status').limit(300),
           supabaseClient.from('tickets').select('*').order('created_at', { ascending: false }).limit(150),
           supabaseClient.from('chat_logs').select('*').order('created_at', { ascending: false }).limit(300),
-          supabaseClient.from('sage_incidents').select('tenant_id').limit(100)
+          supabaseClient.from('sage_incidents').select('*').order('updated_at', { ascending: false }).limit(100),
+          supabaseClient.from('event_notifications').select('*').order('created_at', { ascending: false }).limit(50)
         ]);
         const pRows = (!profRes.error && Array.isArray(profRes.data)) ? profRes.data : [];
         const tRows = (!tkRes.error && Array.isArray(tkRes.data)) ? tkRes.data : [];
         const cRows = (!chRes.error && Array.isArray(chRes.data)) ? chRes.data : [];
         const iRows = (!incRes.error && Array.isArray(incRes.data)) ? incRes.data : [];
+        const nRows = (!ntfRes.error && Array.isArray(ntfRes.data)) ? ntfRes.data : [];
+        sageNotifications = nRows;
         populateSageClientSelector(pRows, tRows, cRows, iRows);
-        await window.runSageCorrelationScan(tRows, cRows);
+        await window.runSageCorrelationScan(tRows, cRows, nRows);
       } catch (err) {
         console.warn("載入 SAGE 事件資料異常:", err);
         populateSageClientSelector([], [], [], []);
-        await window.runSageCorrelationScan([], []);
+        await window.runSageCorrelationScan([], [], []);
       }
     };
+
+    window.handleCreateSageNotification = async function(e) {
+      e.preventDefault();
+      const desc = String(document.getElementById('ntf_problem_desc')?.value || '').trim();
+      if (!desc) return;
+      const dType = document.getElementById('ntf_dispatch_type')?.value || '一般案件';
+      const plant = String(document.getElementById('ntf_company_plant')?.value || '全部廠區').trim();
+      const model = String(document.getElementById('ntf_device_model')?.value || '所有型號／系統').trim();
+      const kwRaw = String(document.getElementById('ntf_keywords')?.value || '').trim();
+      const unavail = Boolean(document.getElementById('ntf_reporting_unavail')?.checked);
+      const keywords = kwRaw ? kwRaw.split(/[,，、\s]+/).map(s => s.trim()).filter(Boolean) : [];
+      const activeTenant = sageSelectedClient !== 'ALL' ? sageSelectedClient : 'DEFAULT_CLIENT';
+      const nid = 'NTF-' + String(Date.now()).slice(-6);
+
+      const newNtf = {
+        tenant_id: activeTenant,
+        notification_id: nid,
+        call_time: new Date().toISOString(),
+        dispatch_type: dType,
+        company_plant: plant,
+        device_model: model,
+        device_scope: model === '所有型號／系統' ? 'all' : 'specific',
+        problem_description: desc,
+        keywords,
+        severity: dType === '資安' ? 'severe' : 'general',
+        reporting_unavailable: unavail
+      };
+
+      if (supabaseClient) {
+        try {
+          await supabaseClient.from('event_notifications').insert([newNtf]);
+        } catch (err) {
+          console.warn("寫入 event_notifications 異常，改暫存於本機:", err);
+        }
+      }
+      sageNotifications.unshift(newNtf);
+      document.getElementById('ntf_problem_desc').value = '';
+      document.getElementById('ntf_keywords').value = '';
+      if (document.getElementById('ntf_reporting_unavail')) {
+        document.getElementById('ntf_reporting_unavail').checked = false;
+      }
+      await window.fetchSageIncidentsFromSupabase();
+    };
+
+    function renderSageNotificationList(list = sageNotifications) {
+      const box = document.getElementById('sageNotificationList');
+      const cnt = document.getElementById('sageNotifCountLabel');
+      if (cnt) cnt.innerText = (list || []).length;
+      if (!box) return;
+      if (!list || list.length === 0) {
+        box.innerHTML = '<div class="text-slate-500">尚無事件通報線索。</div>';
+        return;
+      }
+      box.innerHTML = list.slice(0, 8).map(n => `
+        <div class="p-2 bg-slate-950/70 border border-slate-700/70 rounded-lg flex flex-wrap justify-between items-center gap-2">
+          <div>
+            <span class="font-mono text-sky-300 font-bold">${n.notification_id || 'NTF'}</span>
+            <span class="ml-1.5 px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-200 border border-indigo-500/40">${n.dispatch_type || '一般案件'}</span>
+            <span class="ml-1.5 text-slate-200">${n.problem_description}</span>
+          </div>
+          <span class="text-[10px] text-slate-400">[${resolveRowTenantId(n)}] ${n.company_plant || ''}</span>
+        </div>
+      `).join('');
+    }
 
     window.selectSageGroup = function(groupId) {
       sageSelectedGroupId = groupId;
       renderSageWorkbench();
     };
 
+    window.setGroupAlertLevel = async function(groupId, newAlert) {
+      if (!['P1', 'P2', 'P3', 'P4', 'P5'].includes(newAlert)) return;
+      sageAlertOverrides.set(groupId, newAlert);
+      const target = sageGroups.find(g => g.id === groupId);
+      if (supabaseClient && target) {
+        try {
+          await supabaseClient.from('sage_incidents').upsert([{
+            tenant_id: target.tenantId || 'DEFAULT_CLIENT',
+            group_key: target.id,
+            topic: target.topic,
+            unit: target.unit,
+            status: target.state,
+            alert_level: newAlert,
+            is_p1: newAlert === 'P1',
+            ticket_count: target.tickets.length,
+            chat_count: target.chats.length
+          }], { onConflict: 'tenant_id,group_key' });
+        } catch (_err) {}
+      }
+      await window.fetchSageIncidentsFromSupabase();
+    };
+
     window.confirmSageGroup = async function(groupId) {
       sageConfirmedIds.add(groupId);
+      const reasonInput = document.getElementById(`auditReasonInput_${CSS.escape(groupId)}`);
+      const reason = reasonInput ? reasonInput.value.trim() : (sageAuditReasons.get(groupId) || '值班人員確認為共同事件');
+      if (reason) sageAuditReasons.set(groupId, reason);
       const target = sageGroups.find(g => g.id === groupId);
+      const alertVal = target?.alertLevel || 'P3';
       if (supabaseClient && target) {
         try {
           await supabaseClient.from('sage_incidents').upsert([{
@@ -4291,14 +4565,20 @@ ${stepsText}
             topic: target.topic,
             unit: target.unit,
             status: 'CONFIRMED',
+            alert_level: alertVal,
+            rule_code: target.ruleCode || 'C1',
             is_common_incident: true,
-            is_p1: target.isP1,
+            is_p1: alertVal === 'P1',
             ai_confidence: target.aiConfidence || 0.9,
             root_cause_hypothesis: target.rootCauseHypothesis || '',
+            counter_evidence: target.counterEvidence || '無明顯反向證據',
             ai_summary: target.aiSummary || '',
             recommended_action: target.recommendedAction || '',
+            audit_reason: reason,
             ticket_ids: target.tickets.map(t => t.service_id).filter(Boolean),
             chat_session_ids: target.chats.map(c => c.session_id).filter(Boolean),
+            notification_ids: (target.matchedNotifications || []).map(n => n.notification_id).filter(Boolean),
+            matched_notification_count: (target.matchedNotifications || []).length,
             ticket_count: target.tickets.length,
             chat_count: target.chats.length,
             model_used: target.modelUsed || sageLastModelUsed,
@@ -4314,6 +4594,8 @@ ${stepsText}
 
     window.dismissSageGroup = async function(groupId) {
       sageDismissedIds.add(groupId);
+      const reasonInput = document.getElementById(`auditReasonInput_${CSS.escape(groupId)}`);
+      const reason = reasonInput ? reasonInput.value.trim() : '人工排除為獨立個案';
       const target = sageGroups.find(g => g.id === groupId);
       if (supabaseClient && target) {
         try {
@@ -4323,11 +4605,14 @@ ${stepsText}
             topic: target.topic,
             unit: target.unit,
             status: 'DISMISSED',
+            alert_level: target.alertLevel || 'P5',
             is_common_incident: false,
-            is_p1: target.isP1,
+            is_p1: false,
             ai_confidence: target.aiConfidence || 0,
             root_cause_hypothesis: target.rootCauseHypothesis || '',
+            counter_evidence: target.counterEvidence || '',
             ai_summary: target.aiSummary || '',
+            audit_reason: reason,
             ticket_count: target.tickets.length,
             chat_count: target.chats.length,
             confirmed_by: currentUser?.name || 'Admin',
@@ -4340,6 +4625,122 @@ ${stepsText}
       await window.fetchSageIncidentsFromSupabase();
     };
 
+    window.handleMajorIncidentDecision = async function(groupId, decision) {
+      const target = sageGroups.find(g => g.id === groupId);
+      const miState = decision === 'APPROVE' ? 'APPROVED' : (decision === 'REJECT' ? 'REJECTED' : 'PENDING_APPROVAL');
+      const reasonInput = document.getElementById(`auditReasonInput_${CSS.escape(groupId)}`);
+      const reason = reasonInput ? reasonInput.value.trim() : 'Major Incident 升級審核';
+      sageMajorIncidentMap.set(groupId, { status: miState, reason, decidedBy: currentUser?.name || 'Admin' });
+      if (supabaseClient && target) {
+        try {
+          await supabaseClient.from('sage_incidents').upsert([{
+            tenant_id: target.tenantId || 'DEFAULT_CLIENT',
+            group_key: target.id,
+            topic: target.topic,
+            unit: target.unit,
+            status: miState === 'APPROVED' ? 'CONFIRMED' : target.state,
+            alert_level: miState === 'APPROVED' ? 'P1' : (target.alertLevel || 'P2'),
+            is_p1: miState === 'APPROVED' || target.alertLevel === 'P1',
+            major_incident_status: miState,
+            major_incident_reason: reason,
+            major_incident_decided_by: currentUser?.name || 'Admin',
+            major_incident_decided_at: new Date().toISOString(),
+            ticket_count: target.tickets.length,
+            chat_count: target.chats.length
+          }], { onConflict: 'tenant_id,group_key' });
+        } catch (_err) {}
+      }
+      await window.fetchSageIncidentsFromSupabase();
+      window.openSageAuditDetailModal(groupId);
+    };
+
+    window.openSageAuditDetailModal = function(groupId) {
+      const grp = sageGroups.find(g => g.id === groupId);
+      const modal = document.getElementById('sageDetailModal');
+      const titleEl = document.getElementById('sageDetailModalTitle');
+      const bodyEl = document.getElementById('sageDetailModalBody');
+      if (!grp || !modal || !bodyEl) return;
+
+      if (titleEl) {
+        titleEl.innerText = `📋 事件審核與關聯明細：${grp.topic}（${grp.tenantId} · Alert ${grp.alertLevel}）`;
+      }
+
+      const confirmedTicketsHtml = (grp.tickets || []).map(t => `
+        <div class="p-2 bg-slate-950/80 border border-slate-700 rounded-lg">
+          <div class="flex justify-between items-center">
+            <span class="font-mono font-bold text-sky-300">${t.service_id || 'TK'}</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-amber-300 border border-slate-600">
+              案件緊急度 urgency: ${t.urgency || '未指定'}
+            </span>
+          </div>
+          <div class="text-slate-200 mt-1">${t.client_name || ''} · ${t.location || t.address || ''} · ${t.call_time || ''}</div>
+          <div class="text-slate-400 mt-0.5 whitespace-pre-line">${String(t.problem_description || '').slice(0, 180)}</div>
+        </div>
+      `).join('') || '<div class="text-slate-500">尚無已關聯報修案件</div>';
+
+      const pendingTicketsHtml = (grp.pendingTickets || []).map(t => `
+        <div class="p-2 bg-slate-950/60 border border-amber-500/40 rounded-lg">
+          <div class="flex justify-between items-center">
+            <span class="font-mono font-bold text-amber-300">${t.service_id || 'TK'}（待確認）</span>
+            <span class="text-[10px] text-slate-400">urgency: ${t.urgency || '未指定'}</span>
+          </div>
+          <div class="text-slate-300 mt-0.5">${String(t.problem_description || '').slice(0, 140)}</div>
+        </div>
+      `).join('') || '<div class="text-slate-500">無待確認報修案件</div>';
+
+      const notifsHtml = (grp.matchedNotifications || []).map(n => `
+        <div class="p-2 bg-indigo-950/50 border border-indigo-500/40 rounded-lg text-[11px]">
+          <span class="font-mono font-bold text-indigo-200">${n.notification_id}</span> (${n.dispatch_type})：${n.problem_description}
+        </div>
+      `).join('') || '<div class="text-slate-500">尚無比對命中的事件通報線索</div>';
+
+      const miStatus = grp.majorIncident?.status || 'NONE';
+
+      bodyEl.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 bg-slate-950/70 p-3 rounded-lg border border-slate-800">
+          <div><span class="text-slate-400">預警等級 Alert：</span><b class="text-rose-300">${grp.alertLevel}</b>（規則 ${grp.ruleCode || 'C1'}）</div>
+          <div><span class="text-slate-400">群組狀態：</span><b class="text-emerald-300">${grp.state}</b></div>
+          <div><span class="text-slate-400">Major Incident：</span><b class="text-amber-300">${miStatus}</b></div>
+        </div>
+        <div class="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800 space-y-1">
+          <div><b class="text-amber-200">待查根因假設：</b>${grp.rootCauseHypothesis || '待現場或監控進一步驗證'}</div>
+          <div><b class="text-rose-200">反向證據／排除依據：</b>${grp.counterEvidence || '無明顯反向證據'}</div>
+          <div><b class="text-slate-300">審核備註：</b>${sageAuditReasons.get(grp.id) || '無'}</div>
+        </div>
+        <div class="space-y-1.5">
+          <div class="font-bold text-indigo-300">📣 相符事件通報線索 (${(grp.matchedNotifications || []).length})</div>
+          ${notifsHtml}
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div class="space-y-1.5">
+            <div class="font-bold text-sky-300">✅ 已關聯報修案件 (${(grp.tickets || []).length})</div>
+            ${confirmedTicketsHtml}
+          </div>
+          <div class="space-y-1.5">
+            <div class="font-bold text-amber-300">⏳ 待確認報修案件 (${(grp.pendingTickets || []).length})</div>
+            ${pendingTicketsHtml}
+          </div>
+        </div>
+        <div class="flex flex-wrap justify-end gap-2 pt-2 border-t border-slate-800">
+          <button onclick="handleMajorIncidentDecision('${grp.id.replace(/'/g, "'")}', 'APPLY')" class="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-[11px] font-bold">
+            提出 Major Incident 申請
+          </button>
+          <button onclick="handleMajorIncidentDecision('${grp.id.replace(/'/g, "'")}', 'APPROVE')" class="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-[11px] font-bold">
+            核准 Major Incident 升級
+          </button>
+          <button onclick="handleMajorIncidentDecision('${grp.id.replace(/'/g, "'")}', 'REJECT')" class="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-[11px]">
+            退回升級申請
+          </button>
+        </div>
+      `;
+      modal.classList.remove('hidden');
+    };
+
+    window.closeSageDetailModal = function() {
+      const modal = document.getElementById('sageDetailModal');
+      if (modal) modal.classList.add('hidden');
+    };
+
     window.triggerSageNotificationDraft = function() {
       const box = document.getElementById('sageNotifyPreviewBox');
       if (!box) return;
@@ -4348,15 +4749,20 @@ ${stepsText}
         box.innerText = "目前尚無事件群組可產生通報摘要。";
         return;
       }
-      const level = target.isP1 ? "P1 緊急／疑似重大事件" : (target.state === 'SUSPECT' ? "疑似共同事件" : "持續觀察事件");
+      const alertLv = target.alertLevel || 'P4';
+      const ticketUrgencies = (target.tickets || []).map(t => `${t.service_id}:${t.urgency || '未指定'}`).join('、') || '無';
+      const notifIds = (target.matchedNotifications || []).map(n => n.notification_id).join('、') || '無';
       const confPct = target.aiConfidence ? `${Math.round(target.aiConfidence * 100)}%` : '規則判定';
       box.innerText = `【SAGE 事件通報摘要】
 所屬客戶：${target.tenantId || sageSelectedClient}
 事件類別：${target.topic}
 涉及單位／位置：${target.unit}
-研判等級：${level}（AI 信心度：${confPct}｜引擎：${target.modelUsed || sageLastModelUsed}）
+系統預警等級（Alert）：${alertLv}（規則 ${target.ruleCode || 'C1'}｜AI 信心度：${confPct}｜引擎：${target.modelUsed || sageLastModelUsed}）
+案件原始緊急度（urgency，獨立欄位）：${ticketUrgencies}
+關聯通報線索：${notifIds}
 關聯報修單數：${target.tickets.length} 筆｜關聯使用者諮詢：${target.chats.length} 則
-推測共同根因：${target.rootCauseHypothesis || '同區域／同系統連續出現相似異常，待現場確認'}
+推測共同根因（待查）：${target.rootCauseHypothesis || '同區域／同系統連續出現相似異常，待現場確認'}
+反向證據檢核：${target.counterEvidence || '無明顯反向證據'}
 建議處置：${target.recommendedAction || '請值班工程師確認受影響範圍與設備／系統狀態，必要時啟動跨單位通報與升級處理。'}`;
       window.switchSageSubTab('notify');
     };
@@ -4367,7 +4773,7 @@ ${stepsText}
         if (sageSelectedClient !== 'ALL' && g.tenantId !== sageSelectedClient) return false;
         if (sageFilterStatus !== 'ALL' && g.state !== sageFilterStatus) return false;
         if (!q) return true;
-        return `${g.tenantId || ''} ${g.topic} ${g.unit} ${g.rootCauseHypothesis || ''}`.toLowerCase().includes(q);
+        return `${g.tenantId || ''} ${g.topic} ${g.unit} ${g.alertLevel || ''} ${g.rootCauseHypothesis || ''}`.toLowerCase().includes(q);
       });
 
       const totalLabel = document.getElementById('sageGroupTotalLabel');
@@ -4393,6 +4799,7 @@ ${stepsText}
               : (g.state === 'SUSPECT'
                 ? '<span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-900/70 text-amber-300 border border-amber-600/50">疑似事件</span>'
                 : '<span class="px-1.5 py-0.5 rounded text-[10px] bg-indigo-900/70 text-indigo-300 border border-indigo-600/50">觀案中</span>');
+            const alertBadge = `<span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-950/80 text-rose-200 border border-rose-500/50">${g.alertLevel || 'P4'}</span>`;
             const confBadge = g.aiConfidence > 0
               ? `<span class="text-[10px] text-sky-300 font-mono">AI ${Math.round(g.aiConfidence * 100)}%</span>`
               : '';
@@ -4401,10 +4808,10 @@ ${stepsText}
                    class="p-2.5 rounded-lg border cursor-pointer transition ${active ? 'bg-indigo-950/70 border-indigo-400' : 'bg-slate-900/70 border-slate-700 hover:border-slate-500'}">
                 <div class="flex items-center justify-between gap-2">
                   <span class="text-xs font-bold text-white truncate">${g.topic}</span>
-                  <div class="flex items-center gap-1 shrink-0">${confBadge}${badge}</div>
+                  <div class="flex items-center gap-1 shrink-0">${alertBadge}${confBadge}${badge}</div>
                 </div>
                 <div class="text-[11px] text-slate-400 mt-1 truncate">[${g.tenantId || 'DEFAULT_CLIENT'}] ${g.unit}</div>
-                <div class="text-[10px] text-slate-500 mt-1 font-mono">報修 ${g.tickets.length} 筆 · 諮詢 ${g.chats.length} 則</div>
+                <div class="text-[10px] text-slate-500 mt-1 font-mono">報修 ${g.tickets.length} 筆（待確認 ${g.pendingTickets.length}）· 諮詢 ${g.chats.length} 則</div>
               </div>
             `;
           }).join('');
@@ -4420,9 +4827,9 @@ ${stepsText}
           detailEl.className = "lg:col-span-7 bg-slate-800/90 border border-slate-700 rounded-xl p-4 flex flex-col justify-between space-y-3 text-xs";
           const tkItemsHtml = cur.tickets.slice(0, 5).map(t => `
             <div class="p-2 bg-slate-900/80 border border-slate-700/70 rounded-lg">
-              <div class="flex justify-between font-bold text-sky-300">
+              <div class="flex justify-between items-center font-bold text-sky-300">
                 <span class="font-mono">${t.service_id || 'TK'}</span>
-                <span class="text-slate-400 font-normal">${t.call_time || ''}</span>
+                <span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-amber-300 border border-slate-600 font-normal">urgency:${t.urgency || '未指定'}</span>
               </div>
               <div class="text-slate-200 mt-0.5">${t.client_name || ''} · ${t.location || t.address || ''}</div>
             </div>
@@ -4435,14 +4842,15 @@ ${stepsText}
             </div>
           `).join('') || '<div class="text-slate-500">此群組目前無關聯對話</div>';
 
-          const aiBoxHtml = (cur.rootCauseHypothesis || cur.aiSummary) ? `
+          const aiBoxHtml = (cur.rootCauseHypothesis || cur.aiSummary || cur.counterEvidence) ? `
             <div class="bg-indigo-950/60 border border-indigo-500/40 rounded-lg p-2.5 space-y-1 text-[11px]">
               <div class="flex items-center justify-between text-indigo-300 font-bold">
-                <span>⚡ AI 語意關聯研判（${cur.modelUsed || sageLastModelUsed}）</span>
+                <span>⚡ 預警 ${cur.alertLevel || 'P4'}（規則 ${cur.ruleCode || 'C1'}｜${cur.modelUsed || sageLastModelUsed}）</span>
                 ${cur.aiConfidence > 0 ? `<span class="font-mono text-sky-300">信心度 ${Math.round(cur.aiConfidence * 100)}%</span>` : ''}
               </div>
               ${cur.aiSummary ? `<div class="text-slate-200">${cur.aiSummary}</div>` : ''}
-              ${cur.rootCauseHypothesis ? `<div class="text-amber-200"><b>推測共同根因：</b>${cur.rootCauseHypothesis}</div>` : ''}
+              ${cur.rootCauseHypothesis ? `<div class="text-amber-200"><b>推測共同根因（待查）：</b>${cur.rootCauseHypothesis}</div>` : ''}
+              ${cur.counterEvidence ? `<div class="text-rose-200"><b>反向證據檢核：</b>${cur.counterEvidence}</div>` : ''}
               ${cur.recommendedAction ? `<div class="text-emerald-200"><b>建議處置：</b>${cur.recommendedAction}</div>` : ''}
             </div>
           ` : '';
@@ -4451,10 +4859,16 @@ ${stepsText}
             <div class="space-y-3 overflow-y-auto max-h-[340px]">
               <div class="flex flex-wrap justify-between items-start gap-2 border-b border-slate-700 pb-2.5">
                 <div>
-                  <div class="text-sm font-bold text-white">${cur.topic}</div>
+                  <div class="text-sm font-bold text-white flex items-center gap-2">
+                    <span>${cur.topic}</span>
+                    <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-rose-950 text-rose-200 border border-rose-500/50">Alert ${cur.alertLevel || 'P4'}</span>
+                  </div>
                   <div class="text-[11px] text-slate-400 mt-0.5">客戶：${cur.tenantId || 'DEFAULT_CLIENT'} · 涉及單位／位置：${cur.unit}</div>
                 </div>
-                <div class="flex items-center gap-1.5">
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <button onclick="openSageAuditDetailModal('${cur.id.replace(/'/g, "'")}')" class="px-2.5 py-1 bg-indigo-700 hover:bg-indigo-600 text-white rounded text-[11px] font-bold">
+                    🔍 審核明細 (${cur.tickets.length + cur.pendingTickets.length})
+                  </button>
                   <button onclick="confirmSageGroup('${cur.id.replace(/'/g, "'")}')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold">
                     ✓ 確認共同事件
                   </button>
@@ -4496,22 +4910,36 @@ ${stepsText}
             <div class="p-2.5 bg-slate-900/90 border border-indigo-500/30 rounded-lg text-[11px] text-indigo-200 mb-2">
               📊 <b>SAGE 辨識準確率追蹤：</b>${precisionHint}
             </div>
-          ` + sageGroups.map(g => `
-            <div class="p-3 bg-slate-900/80 border border-slate-700 rounded-lg flex flex-wrap justify-between items-center gap-2">
-              <div>
-                <div class="font-bold text-white">[${g.tenantId || 'DEFAULT_CLIENT'}] ${g.topic} <span class="text-slate-400 font-normal">(${g.unit})</span></div>
-                <div class="text-[11px] text-slate-400">狀態：${g.state} · 報修 ${g.tickets.length} 筆 · 諮詢 ${g.chats.length} 則 ${g.aiConfidence > 0 ? `· AI 信心度 ${Math.round(g.aiConfidence * 100)}%` : ''}</div>
+          ` + sageGroups.map(g => {
+            const curAlert = g.alertLevel || 'P4';
+            return `
+            <div class="p-3 bg-slate-900/80 border border-slate-700 rounded-lg space-y-2">
+              <div class="flex flex-wrap justify-between items-center gap-2">
+                <div>
+                  <div class="font-bold text-white">[${g.tenantId || 'DEFAULT_CLIENT'}] ${g.topic} <span class="text-slate-400 font-normal">(${g.unit})</span></div>
+                  <div class="text-[11px] text-slate-400">狀態：${g.state} · 預警 Alert：<b>${curAlert}</b> · 報修 ${g.tickets.length} 筆（待確認 ${g.pendingTickets.length}）· 通報 ${g.matchedNotifications.length} 筆</div>
+                </div>
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <select onchange="setGroupAlertLevel('${g.id.replace(/'/g, "'")}', this.value)" class="bg-slate-950 border border-slate-600 rounded px-1.5 py-1 text-[11px] text-rose-200 font-mono">
+                    ${['P1','P2','P3','P4','P5'].map(p => `<option value="${p}" ${curAlert === p ? 'selected' : ''}>Alert ${p}</option>`).join('')}
+                  </select>
+                  <button onclick="openSageAuditDetailModal('${g.id.replace(/'/g, "'")}')" class="px-2.5 py-1 bg-indigo-700 hover:bg-indigo-600 text-white rounded text-[11px] font-bold">
+                    明細
+                  </button>
+                  <button onclick="confirmSageGroup('${g.id.replace(/'/g, "'")}')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold">
+                    ✓ 確認共同事件
+                  </button>
+                  <button onclick="dismissSageGroup('${g.id.replace(/'/g, "'")}')" class="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-[11px]">
+                    ✕ 獨立個案
+                  </button>
+                </div>
               </div>
-              <div class="flex items-center gap-1.5">
-                <button onclick="confirmSageGroup('${g.id.replace(/'/g, "'")}')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold">
-                  ✓ 確認共同事件
-                </button>
-                <button onclick="dismissSageGroup('${g.id.replace(/'/g, "'")}')" class="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-[11px]">
-                  ✕ 獨立個案
-                </button>
-              </div>
+              <input id="auditReasonInput_${CSS.escape(g.id)}" type="text" value="${(sageAuditReasons.get(g.id) || '').replace(/"/g, '&quot;')}"
+                     placeholder="輸入審核理由或 Major Incident 升級說明..."
+                     class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1 text-[11px] text-slate-200 focus:outline-none focus:border-indigo-500">
             </div>
-          `).join('');
+          `;
+          }).join('');
         }
       }
     };
