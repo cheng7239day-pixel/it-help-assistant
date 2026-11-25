@@ -805,6 +805,40 @@
             <div id="sageNotifyPreviewBox" class="bg-slate-900 border border-slate-700 rounded-lg p-3 text-[11px] text-slate-300 whitespace-pre-line">
               尚未產生通報摘要，請在「事件情報中心」選取群組或點擊上方按鈕產生。
             </div>
+
+            <!-- 案件轉事件自動寄信通知設定（支援直接呼叫 Edge Function / 寄信端點或開啟通知信件草稿視窗） -->
+            <div class="bg-slate-900/90 border border-indigo-500/40 rounded-xl p-3 space-y-2 text-xs">
+              <div class="flex flex-wrap justify-between items-center gap-2">
+                <div class="font-bold text-indigo-300">✉️ 案件轉事件自動 Email 通知設定</div>
+                <label class="flex items-center gap-1.5 text-[11px] text-emerald-300 cursor-pointer">
+                  <input id="sage_auto_mail_enabled" type="checkbox" checked onchange="saveSageMailConfig()">
+                  <span>案件確認轉為事件時自動寄出通知信</span>
+                </label>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <label class="block text-[10px] text-slate-400 mb-1">預設收件人信箱（多位以逗號分隔）</label>
+                  <input id="sage_mail_recipients" type="text" placeholder="例：duty-it@welltake.com.tw, ops-lead@welltake.com.tw"
+                         onchange="saveSageMailConfig()"
+                         class="w-full bg-slate-800 border border-slate-600 rounded px-2.5 py-1 text-xs text-white">
+                </div>
+                <div>
+                  <label class="block text-[10px] text-slate-400 mb-1">抄送信箱 CC（選填，逗號分隔）</label>
+                  <input id="sage_mail_cc" type="text" placeholder="例：manager@welltake.com.tw"
+                         onchange="saveSageMailConfig()"
+                         class="w-full bg-slate-800 border border-slate-600 rounded px-2.5 py-1 text-xs text-white">
+                </div>
+                <div>
+                  <label class="block text-[10px] text-slate-400 mb-1">寄信 Webhook / Edge Function 端點（選填）</label>
+                  <input id="sage_mail_webhook_url" type="text" placeholder="留空則自動帶入關聯同仁信箱並開啟通知信視窗"
+                         onchange="saveSageMailConfig()"
+                         class="w-full bg-slate-800 border border-slate-600 rounded px-2.5 py-1 text-xs text-white">
+                </div>
+              </div>
+              <div id="sageMailDispatchStatus" class="text-[11px] text-slate-400">
+                狀態：待命（當案件轉為事件時，將自動彙整事件資訊與關聯人員信箱發送或開啟通知信）。
+              </div>
+            </div>
           </div>
 
           <!-- 子分頁 3：事件審核中心（含關聯明細、Alert 分級與 Major Incident 申請／核准） -->
@@ -965,6 +999,53 @@
         </button>
       </div>
 
+    </div>
+  </div>
+
+  <!-- 5A. 事件通知信件發送／確認 Modal -->
+  <div id="sageMailModal" class="hidden absolute inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <div class="bg-white text-slate-800 w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden flex flex-col my-auto border border-slate-200">
+      <div class="bg-[#10183d] text-white px-5 py-3.5 flex justify-between items-center shrink-0">
+        <div class="flex items-center space-x-2">
+          <span class="text-lg">✉️</span>
+          <div>
+            <h3 class="text-sm font-bold text-white">案件轉事件 — Email 通知相關人員</h3>
+            <p class="text-[11px] text-sky-200">已自動帶入事件資訊與關聯報修人員信箱，可調整收件人後寄出</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeSageMailModal()" class="text-slate-400 hover:text-white text-base">✕</button>
+      </div>
+
+      <form onsubmit="handleSendSageIncidentMail(event)" class="p-4 space-y-3 text-xs">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">收件人信箱（多位以逗號分隔） <span class="text-rose-500">*</span></label>
+          <input type="text" id="mail_to_input" required placeholder="user1@company.com, user2@company.com"
+                 class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-600">
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">副本 CC（選填，逗號分隔）</label>
+          <input type="text" id="mail_cc_input" placeholder="manager@company.com"
+                 class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-600">
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">通知信主旨 <span class="text-rose-500">*</span></label>
+          <input type="text" id="mail_subject_input" required
+                 class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold focus:outline-none focus:border-indigo-600">
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">通知信內容</label>
+          <textarea id="mail_body_input" rows="8"
+                    class="w-full border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 leading-relaxed focus:outline-none focus:border-indigo-600"></textarea>
+        </div>
+        <div class="flex justify-end space-x-2 pt-2 border-t border-slate-200">
+          <button type="button" onclick="closeSageMailModal()" class="px-4 py-2 border border-slate-300 text-slate-600 rounded-xl hover:bg-slate-100 font-medium">
+            取消
+          </button>
+          <button type="submit" id="btnSendSageMail" class="px-5 py-2 bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl font-bold shadow">
+            📤 寄出事件通知信
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -4250,6 +4331,9 @@ ${stepsText}
       sageSelectedClient = String(clientVal || 'ALL');
       sageSelectedGroupId = null;
       await window.fetchSageIncidentsFromSupabase();
+      if (target) {
+        await window.notifyIncidentTransitionByMail(target, '事件確認（CONFIRMED）');
+      }
     };
 
     window.switchSageSubTab = function(subTab) {
@@ -5096,6 +5180,178 @@ ${stepsText}
 反向證據檢核：${target.counterEvidence || '無明顯反向證據'}
 建議處置：${target.recommendedAction || '請值班工程師確認受影響範圍與設備／系統狀態，必要時啟動跨單位通報與升級處理。'}`;
       window.switchSageSubTab('notify');
+    };
+
+    const SAGE_MAIL_CFG_KEY = 'sage_incident_mail_config_v1';
+
+    function getSageMailConfig() {
+      try {
+        const raw = localStorage.getItem(SAGE_MAIL_CFG_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch (_e) {}
+      return { enabled: true, to: '', cc: '', webhookUrl: '' };
+    }
+
+    window.saveSageMailConfig = function() {
+      const cfg = {
+        enabled: Boolean(document.getElementById('sage_auto_mail_enabled')?.checked ?? true),
+        to: String(document.getElementById('sage_mail_recipients')?.value || '').trim(),
+        cc: String(document.getElementById('sage_mail_cc')?.value || '').trim(),
+        webhookUrl: String(document.getElementById('sage_mail_webhook_url')?.value || '').trim()
+      };
+      try {
+        localStorage.setItem(SAGE_MAIL_CFG_KEY, JSON.stringify(cfg));
+      } catch (_e) {}
+      return cfg;
+    };
+
+    function collectRelatedEmailsForGroup(grp, profileRows = []) {
+      const emails = new Set();
+      const cfg = getSageMailConfig();
+      if (cfg.to) {
+        cfg.to.split(/[,;，；\s]+/).map(s => s.trim()).filter(e => e.includes('@')).forEach(e => emails.add(e));
+      }
+      (grp?.tickets || []).forEach(t => {
+        const em = String(t.email || '').trim();
+        if (em.includes('@')) emails.add(em);
+      });
+      (grp?.chats || []).forEach(c => {
+        const em = String(c.user_email || '').trim();
+        if (em.includes('@')) emails.add(em);
+      });
+      if (emails.size === 0 && Array.isArray(profileRows)) {
+        const targetTenant = String(grp?.tenantId || '').trim();
+        profileRows.forEach(p => {
+          const pComp = typeof normalizeCompanyName === 'function' ? normalizeCompanyName(p.company) : String(p.company || '').trim();
+          const em = String(p.email || '').trim();
+          if (em.includes('@') && (!targetTenant || targetTenant === 'DEFAULT_CLIENT' || pComp === targetTenant)) {
+            emails.add(em);
+          }
+        });
+      }
+      return Array.from(emails);
+    }
+
+    window.closeSageMailModal = function() {
+      const m = document.getElementById('sageMailModal');
+      if (m) m.classList.add('hidden');
+    };
+
+    window.notifyIncidentTransitionByMail = async function(grp, transitionLabel = '案件轉為事件') {
+      if (!grp) return;
+      const cfg = getSageMailConfig();
+      if (cfg.enabled === false) return;
+
+      let profList = typeof adminProfilesCache !== 'undefined' ? adminProfilesCache : [];
+      if ((!profList || profList.length === 0) && supabaseClient) {
+        try {
+          const { data } = await supabaseClient.from('profiles').select('email, company, role, status').limit(200);
+          if (Array.isArray(data)) profList = data;
+        } catch (_e) {}
+      }
+
+      const toList = collectRelatedEmailsForGroup(grp, profList);
+      const ccList = cfg.cc ? cfg.cc.split(/[,;，；\s]+/).map(s => s.trim()).filter(e => e.includes('@')) : [];
+      const ticketIds = (grp.tickets || []).map(t => t.service_id).filter(Boolean).join('、') || '無';
+      const subject = `【SAGE 事件通知｜${grp.alertLevel || 'P3'}】${transitionLabel}：${grp.topic}（${grp.tenantId || 'DEFAULT_CLIENT'}）`;
+      const bodyText = [
+        `您好，以下報修案件已轉為事件，請相關人員協助追蹤與處置：`,
+        ``,
+        `・事件狀態：${transitionLabel}（目前狀態：${grp.state || 'CONFIRMED'}）`,
+        `・所屬客戶：${grp.tenantId || 'DEFAULT_CLIENT'}`,
+        `・事件類別：${grp.topic}`,
+        `・涉及單位／位置：${grp.unit}`,
+        `・預警等級（Alert）：${grp.alertLevel || 'P3'}（規則 ${grp.ruleCode || 'C1'}）`,
+        `・關聯報修單號：${ticketIds}（共 ${(grp.tickets || []).length} 筆）`,
+        `・推測共同根因：${grp.rootCauseHypothesis || '待現場或監控進一步確認'}`,
+        `・審核備註：${sageAuditReasons.get(grp.id) || '無'}`
+      ].join('\n');
+
+      const statusEl = document.getElementById('sageMailDispatchStatus');
+
+      if (cfg.webhookUrl) {
+        try {
+          const res = await fetchWithTimeout(cfg.webhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: toList,
+              cc: ccList,
+              subject,
+              body: bodyText,
+              incident_group_key: grp.id,
+              tenant_id: grp.tenantId,
+              alert_level: grp.alertLevel
+            })
+          }, 8000);
+          if (res.ok) {
+            if (statusEl) statusEl.innerText = `已透過寄信端點通知：${toList.join(', ') || '已設定收件人'}（${new Date().toLocaleTimeString()}）`;
+            return;
+          }
+        } catch (_err) {
+          // 端點失敗時退回開啟通知信視窗供人工確認寄出
+        }
+      }
+
+      const toInput = document.getElementById('mail_to_input');
+      const ccInput = document.getElementById('mail_cc_input');
+      const subInput = document.getElementById('mail_subject_input');
+      const bodyInput = document.getElementById('mail_body_input');
+      const modal = document.getElementById('sageMailModal');
+
+      if (toInput) toInput.value = toList.join(', ');
+      if (ccInput) ccInput.value = ccList.join(', ');
+      if (subInput) subInput.value = subject;
+      if (bodyInput) bodyInput.value = bodyText;
+      if (modal) modal.classList.remove('hidden');
+      if (statusEl) {
+        statusEl.innerText = `已備妥事件通知信（收件人：${toList.join(', ') || '請填入收件信箱'}）`;
+      }
+    };
+
+    window.handleSendSageIncidentMail = async function(e) {
+      e.preventDefault();
+      const toVal = String(document.getElementById('mail_to_input')?.value || '').trim();
+      const ccVal = String(document.getElementById('mail_cc_input')?.value || '').trim();
+      const subVal = String(document.getElementById('mail_subject_input')?.value || '').trim();
+      const bodyVal = String(document.getElementById('mail_body_input')?.value || '').trim();
+      if (!toVal || !subVal) return;
+
+      const toEmails = toVal.split(/[,;，；\s]+/).map(s => s.trim()).filter(Boolean);
+      const ccEmails = ccVal ? ccVal.split(/[,;，；\s]+/).map(s => s.trim()).filter(Boolean) : [];
+      const cfg = getSageMailConfig();
+
+      const btn = document.getElementById('btnSendSageMail');
+      if (btn) {
+        btn.innerText = "發送中...";
+        btn.disabled = true;
+      }
+
+      try {
+        if (cfg.webhookUrl) {
+          await fetchWithTimeout(cfg.webhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ to: toEmails, cc: ccEmails, subject: subVal, body: bodyVal })
+          }, 8000);
+        } else {
+          const mailtoUrl = `mailto:${encodeURIComponent(toEmails.join(','))}?${ccEmails.length ? `cc=${encodeURIComponent(ccEmails.join(','))}&` : ''}subject=${encodeURIComponent(subVal)}&body=${encodeURIComponent(bodyVal)}`;
+          window.open(mailtoUrl, '_blank');
+        }
+
+        const statusEl = document.getElementById('sageMailDispatchStatus');
+        if (statusEl) {
+          statusEl.innerText = `✅ 已觸發事件通知信（收件人：${toEmails.join(', ')}｜${new Date().toLocaleTimeString()}）`;
+        }
+        window.closeSageMailModal();
+      } catch (err) {
+        alert("寄送事件通知信失敗：" + err.message);
+      } finally {
+        if (btn) {
+          btn.innerText = "📤 寄出事件通知信";
+          btn.disabled = false;
+        }
+      }
     };
 
     function renderSageWorkbench() {
