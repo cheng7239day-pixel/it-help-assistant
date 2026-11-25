@@ -1700,13 +1700,15 @@
 
     window.logChatToSupabase = async function(role, content, hasImg = false) {
       if (!supabaseClient || !currentUser) return;
+      const normCompany = normalizeCompanyName(currentUser.company) || 'DEFAULT_CLIENT';
       try {
         await supabaseClient.from('chat_logs').insert([{
           session_id: currentSessionId,
+          tenant_id: normCompany,
           user_id: (currentUser.id && currentUser.id !== 'admin-master') ? currentUser.id : null,
           user_name: currentUser.name || '',
           user_email: currentUser.email || '',
-          company: currentUser.company || '',
+          company: normCompany,
           jurisdiction: currentUser.jurisdiction || currentUser.dept || '',
           role: currentUser.role || 'user',
           message_role: role,
@@ -2811,12 +2813,17 @@ ${stepsText}
       const isP1 = inquiryContext.isMajorIncident || (inquiryContext.matchedSop && inquiryContext.matchedSop.urgency === 'P1');
       const assignedDept = inquiryContext.matchedSop?.escalate_dept || '資訊服務處';
 
+      const normTicketCompany = normalizeCompanyName(document.getElementById('simple_company').value) || 'DEFAULT_CLIENT';
       const ticketPayload = {
         service_id: sId,
+        tenant_id: normTicketCompany,
         user_id: (currentUser.id && currentUser.id !== 'admin-master') ? currentUser.id : null,
         client_name: document.getElementById('simple_name').value,
         phone: phoneVal,
-        company_plant: `${document.getElementById('simple_company').value} (${document.getElementById('simple_jurisdiction').value})`,
+        company_plant: `${normTicketCompany} (${document.getElementById('simple_jurisdiction').value})`,
+        event_topic: classifySageTopic(`${inquiryContext.deviceOrSystem || ''} ${inquiryContext.originalProblem || ''}`),
+        impact_scope: inquiryContext.impactScope || '單機 / 個人',
+        error_code: (inquiryContext.errorCode && inquiryContext.errorCode !== '無明確代碼') ? inquiryContext.errorCode : null,
         department: currentUser.dept || '',
         location: locationVal,
         bu: assignedDept,
@@ -2880,7 +2887,7 @@ ${stepsText}
       const cleanEmail = document.getElementById('regEmail').value.trim().toLowerCase();
 
       const profilePayload = {
-        company: document.getElementById('regCompany').value.trim(),
+        company: normalizeCompanyName(document.getElementById('regCompany').value),
         org_type: document.getElementById('regOrgType').value,
         unit_label: document.getElementById('regUnitLabel').value,
         jurisdiction: document.getElementById('regJurisdiction').value.trim(),
@@ -3874,28 +3881,45 @@ ${stepsText}
     let sageDismissedIds = new Set();
     let sageLastModelUsed = 'rule-only';
 
+    function normalizeCompanyName(rawName) {
+      return String(rawName || '')
+        .trim()
+        .replace(/^台(?=(北市|中市|南市|東縣|東市|北|中|南|東|灣))/, '臺');
+    }
+
     function resolveRowTenantId(row) {
       if (!row || typeof row !== 'object') return 'DEFAULT_CLIENT';
-      const direct = String(row.tenant_id || '').trim();
-      if (direct) return direct;
-      const comp = String(row.company || '').trim();
+      const direct = normalizeCompanyName(row.tenant_id);
+      if (direct && direct !== 'DEFAULT_CLIENT') return direct;
+      const comp = normalizeCompanyName(row.company);
       if (comp) return comp;
       const cp = String(row.company_plant || '').trim();
       if (cp) {
         const idx = cp.indexOf('(');
-        return (idx > 0 ? cp.slice(0, idx) : cp).trim() || 'DEFAULT_CLIENT';
+        const extracted = normalizeCompanyName(idx > 0 ? cp.slice(0, idx) : cp);
+        if (extracted) return extracted;
       }
-      return 'DEFAULT_CLIENT';
+      return direct || 'DEFAULT_CLIENT';
     }
 
-    function populateSageClientSelector(ticketsRows = [], chatRows = [], dbIncRows = []) {
+    function populateSageClientSelector(profileRows = [], ticketsRows = [], chatRows = [], dbIncRows = []) {
       const sel = document.getElementById('sageClientFilter');
       if (!sel) return;
       const prev = sageSelectedClient || sel.value || 'ALL';
       const clients = new Set();
-      (ticketsRows || []).forEach(t => { const id = resolveRowTenantId(t); if (id) clients.add(id); });
-      (chatRows || []).forEach(c => { const id = resolveRowTenantId(c); if (id) clients.add(id); });
-      (dbIncRows || []).forEach(d => { const id = String(d.tenant_id || '').trim(); if (id && id !== 'ALL') clients.add(id); });
+
+      // 1. 主要來源：依註冊帳號資料表 (profiles.company) 建立客戶選單
+      (profileRows || []).forEach(p => {
+        if (p && p.status !== 'rejected') {
+          const compName = normalizeCompanyName(p.company);
+          if (compName && compName !== 'ALL') clients.add(compName);
+        }
+      });
+
+      // 2. 兼容歷史報修、對話與事件資料中的客戶識別
+      (ticketsRows || []).forEach(t => { const id = resolveRowTenantId(t); if (id && id !== 'DEFAULT_CLIENT') clients.add(id); });
+      (chatRows || []).forEach(c => { const id = resolveRowTenantId(c); if (id && id !== 'DEFAULT_CLIENT') clients.add(id); });
+      (dbIncRows || []).forEach(d => { const id = normalizeCompanyName(d.tenant_id); if (id && id !== 'ALL' && id !== 'DEFAULT_CLIENT') clients.add(id); });
 
       const sorted = Array.from(clients).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
       sel.innerHTML = '<option value="ALL">全部客戶（跨客戶總覽）</option>' +
@@ -4227,24 +4251,26 @@ ${stepsText}
 
     window.fetchSageIncidentsFromSupabase = async function() {
       if (!supabaseClient) {
-        populateSageClientSelector([], [], []);
+        populateSageClientSelector([], [], [], []);
         await window.runSageCorrelationScan([], []);
         return;
       }
       try {
-        const [tkRes, chRes, incRes] = await Promise.all([
+        const [profRes, tkRes, chRes, incRes] = await Promise.all([
+          supabaseClient.from('profiles').select('company, status').limit(300),
           supabaseClient.from('tickets').select('*').order('created_at', { ascending: false }).limit(150),
           supabaseClient.from('chat_logs').select('*').order('created_at', { ascending: false }).limit(300),
           supabaseClient.from('sage_incidents').select('tenant_id').limit(100)
         ]);
+        const pRows = (!profRes.error && Array.isArray(profRes.data)) ? profRes.data : [];
         const tRows = (!tkRes.error && Array.isArray(tkRes.data)) ? tkRes.data : [];
         const cRows = (!chRes.error && Array.isArray(chRes.data)) ? chRes.data : [];
         const iRows = (!incRes.error && Array.isArray(incRes.data)) ? incRes.data : [];
-        populateSageClientSelector(tRows, cRows, iRows);
+        populateSageClientSelector(pRows, tRows, cRows, iRows);
         await window.runSageCorrelationScan(tRows, cRows);
       } catch (err) {
         console.warn("載入 SAGE 事件資料異常:", err);
-        populateSageClientSelector([], [], []);
+        populateSageClientSelector([], [], [], []);
         await window.runSageCorrelationScan([], []);
       }
     };
