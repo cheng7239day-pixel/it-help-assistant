@@ -4380,19 +4380,53 @@ ${stepsText}
       return { hasRecovery, isGenericOnly };
     }
 
+    function getSageRuleThresholds() {
+      const t1 = Math.max(1, Number(document.getElementById('cfg_t1')?.value || 4320));
+      const t2 = Math.max(1, Number(document.getElementById('cfg_t2')?.value || 1440));
+      const t3 = Math.max(1, Number(document.getElementById('cfg_t3')?.value || 60));
+      const r0 = Math.max(1, Number(document.getElementById('cfg_r0')?.value || 1));
+      const r1 = Math.max(r0, Number(document.getElementById('cfg_r1')?.value || 3));
+      const r2 = Math.max(r1, Number(document.getElementById('cfg_r2')?.value || 10));
+      const r3 = Math.max(r2, Number(document.getElementById('cfg_r3')?.value || 50));
+      return { t1, t2, t3, r0, r1, r2, r3 };
+    }
+
     function computeAlertLevel(grp) {
       if (sageAlertOverrides.has(grp.id)) {
         return sageAlertOverrides.get(grp.id);
       }
+      const { t1, t2, t3, r0, r1, r2, r3 } = getSageRuleThresholds();
       const nCount = (grp.matchedNotifications || []).length;
       const tCount = (grp.tickets || []).length;
       const hasSevereNotif = (grp.matchedNotifications || []).some(
         n => n.severity === 'severe' || n.reporting_unavailable === true || n.dispatch_type === '資安'
       );
-      if (hasSevereNotif || (nCount > 0 && tCount >= 3)) return 'P1';
-      if (nCount > 0 && tCount >= 1) return 'P2';
-      if (tCount >= 3 || (grp.aiConfidence >= 0.85 && tCount >= 2)) return 'P3';
-      if (tCount >= 2 || grp.aiConfidence >= 0.75) return 'P4';
+      const hasUnavailNotif = (grp.matchedNotifications || []).some(n => Boolean(n.reporting_unavailable));
+
+      let spanMinutes = 0;
+      const times = (grp.tickets || [])
+        .map(t => new Date(t.created_at || t.call_time || '').getTime())
+        .filter(ms => !Number.isNaN(ms) && ms > 0);
+      if (times.length >= 2) {
+        spanMinutes = Math.round((Math.max(...times) - Math.min(...times)) / 60000);
+      }
+      const winCode = spanMinutes <= t3 ? 'T3' : (spanMinutes <= t2 ? 'T2' : 'T1');
+      const tierCode = tCount >= r3 ? 'R3' : (tCount >= r2 ? 'R2' : (tCount >= r1 ? 'R1' : 'R0'));
+
+      if (hasSevereNotif && tCount >= r0) return 'P1';
+      if (hasUnavailNotif && tCount >= r1) return 'P1';
+      if (nCount > 0 && tCount >= r2) return 'P1';
+      if (nCount > 0 && tCount >= r0) return 'P2';
+
+      const matchedRule = Array.isArray(sageRuleMatrixState)
+        ? sageRuleMatrixState.find(r => r.window === winCode && r.tier === tierCode && r.category.includes('大量重複案件'))
+        : null;
+      if (matchedRule && ['P1', 'P2', 'P3', 'P4', 'P5'].includes(matchedRule.alert)) {
+        return matchedRule.alert;
+      }
+
+      if (tCount >= r2 || (grp.aiConfidence >= 0.85 && tCount >= r1)) return 'P3';
+      if (tCount >= r1 || grp.aiConfidence >= 0.75) return 'P4';
       return 'P5';
     }
 
@@ -4538,6 +4572,7 @@ ${stepsText}
           body: JSON.stringify({
             mode: "sage_correlate",
             tenant_id: sageSelectedClient,
+            rule_config: getSageRuleThresholds(),
             tickets: (ticketsRows || []).slice(0, 35).map(t => ({
               tenant_id: resolveRowTenantId(t),
               service_id: t.service_id,
@@ -5045,7 +5080,14 @@ ${stepsText}
       const miState = decision === 'APPROVE' ? 'APPROVED' : (decision === 'REJECT' ? 'REJECTED' : 'PENDING_APPROVAL');
       const reasonInput = document.getElementById(`auditReasonInput_${CSS.escape(groupId)}`);
       const reason = reasonInput ? reasonInput.value.trim() : 'Major Incident 升級審核';
-      sageMajorIncidentMap.set(groupId, { status: miState, reason, decidedBy: currentUser?.name || 'Admin' });
+      const prevMi = sageMajorIncidentMap.get(groupId) || {};
+      const actorName = currentUser?.name || currentUser?.email || 'Admin';
+      sageMajorIncidentMap.set(groupId, {
+        status: miState,
+        reason,
+        requestedBy: decision === 'APPLY' ? actorName : (prevMi.requestedBy || actorName),
+        decidedBy: decision === 'APPLY' ? '' : actorName
+      });
       if (supabaseClient && target) {
         try {
           await supabaseClient.from('sage_incidents').upsert([{
