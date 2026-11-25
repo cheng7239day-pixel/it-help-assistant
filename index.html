@@ -9,6 +9,9 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <!-- SheetJS：支援解析 Excel (.xlsx / .xls) -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- PDF.js 與 JSZip：支援前端直接解析 .pdf、.docx/.doc 與 .pptx/.ppt 文件轉知識庫 -->
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
     body {
@@ -265,6 +268,9 @@
           </span>
         </span>
         <div class="flex items-center gap-1.5">
+          <button id="engSopWorkspaceBtn" onclick="openEngineerSopPortalModal()" class="hidden text-[10px] bg-emerald-700 hover:bg-emerald-600 text-white px-2.5 py-0.5 rounded-full font-bold shadow-sm transition">
+            📚 SOP 匯入與查詢庫
+          </button>
           <button onclick="startNewChatSession()" class="text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-700 px-2 py-0.5 rounded-full font-medium transition">
             🔄 新問題
           </button>
@@ -510,9 +516,9 @@
                 <option value="草稿待審">僅顯示：草稿待審</option>
                 <option value="已停用">僅顯示：已停用</option>
               </select>
-              <input type="file" id="kbBatchFileInput" accept=".xlsx, .xls, .json" class="hidden" onchange="handleSmartKbUpload(event)">
+              <input type="file" id="kbBatchFileInput" accept=".xlsx, .xls, .json, .pdf, .doc, .docx, .ppt, .pptx" multiple class="hidden" onchange="handleSmartKbUpload(event)">
               <button onclick="document.getElementById('kbBatchFileInput').click()" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white rounded font-bold shadow flex items-center gap-1.5 text-xs">
-                <span>📂</span> 批次匯入 (支援 Excel / JSON v3)
+                <span>📂</span> 匯入 SOP (PDF / Word / PPT / Excel / JSON)
               </button>
               <button onclick="openEditSopModal(null)" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded font-bold shadow text-xs">
                 + 新增單筆 SOP
@@ -1123,6 +1129,87 @@
           </button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- 5C. 工程師專用：SOP 文件匯入（.pdf/.doc/.pptx）與新進工程師操作指引查詢庫 Modal -->
+  <div id="engineerSopPortalModal" class="hidden absolute inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <div class="bg-slate-900 text-slate-100 w-full max-w-4xl rounded-2xl shadow-2xl border border-slate-700 overflow-hidden flex flex-col max-h-[92vh]">
+      <div class="bg-[#10183d] text-white px-4 py-3 flex justify-between items-center border-b border-slate-700 shrink-0">
+        <div>
+          <h3 class="font-bold text-sm text-emerald-300 flex items-center gap-1.5">
+            📚 工程師 SOP 知識庫工作站（匯入 PDF / Word / PPT ＆ 新進工程師查詢操作）
+          </h3>
+          <p class="text-[11px] text-slate-300 mt-0.5">支援上傳 .pdf、.doc/.docx、.ppt/.pptx 自動轉為標準 SOP 條目；新進工程師可即時搜尋並帶入小威逐步引導。</p>
+        </div>
+        <button type="button" onclick="closeEngineerSopPortalModal()" class="text-slate-300 hover:text-white text-base px-2">✕</button>
+      </div>
+
+      <div class="p-4 overflow-y-auto flex-1 space-y-4 text-xs">
+        <!-- 上傳轉換區 -->
+        <div class="bg-slate-800/90 border border-emerald-500/40 rounded-xl p-3.5 space-y-2.5">
+          <div class="flex flex-wrap justify-between items-center gap-2">
+            <div class="font-bold text-emerald-300">📤 匯入 SOP 文件（自動解析為知識庫格式）</div>
+            <div class="flex flex-wrap items-center gap-2">
+              <select id="engDocAudienceSelect" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200">
+                <option value="資訊室">適用對象：資訊室（工程師操作手冊）</option>
+                <option value="使用者">適用對象：使用者（全院通用指引）</option>
+              </select>
+              <input type="file" id="engSopDocInput" accept=".pdf, .doc, .docx, .ppt, .pptx, .xlsx, .xls, .json" multiple class="hidden" onchange="handleSmartKbUpload(event)">
+              <button type="button" onclick="document.getElementById('engSopDocInput').click()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold shadow flex items-center gap-1.5">
+                <span>📄</span> 選擇 .pdf / .doc / .pptx 匯入
+              </button>
+              <button type="button" onclick="openEditSopModal(null)" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold shadow">
+                + 手動新增 SOP
+              </button>
+            </div>
+          </div>
+          <div id="docParseProgressBanner" class="hidden p-2.5 bg-indigo-950/80 border border-indigo-400/50 rounded-lg text-[11px] text-sky-200"></div>
+        </div>
+
+        <!-- 新進工程師查詢與操作指引區 -->
+        <div class="space-y-2.5">
+          <div class="flex flex-wrap items-center gap-2">
+            <input id="engSopSearchInput" type="text" oninput="renderEngineerSopCatalog()"
+                   placeholder="🔍 輸入設備型號、錯誤訊息、系統名稱或關鍵字（例：讀卡機、HIS、印表機、重灌、VPN）..."
+                   class="flex-1 min-w-[220px] bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-400">
+            <select id="engSopAudienceFilter" onchange="renderEngineerSopCatalog()" class="bg-slate-800 border border-slate-600 rounded-lg px-2.5 py-2 text-xs text-slate-200">
+              <option value="ALL">全部 SOP（含資訊室專用＋全院）</option>
+              <option value="資訊室">僅看：資訊室工程師手冊</option>
+              <option value="使用者">僅看：全院一般排除</option>
+            </select>
+          </div>
+          <div id="engSopCatalogCount" class="text-[11px] text-slate-400">載入 SOP 條目中...</div>
+          <div id="engSopCatalogList" class="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[46vh] overflow-y-auto pr-1"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5D. 文件自動轉換 SOP 預覽與確認寫入 Modal -->
+  <div id="docConvertPreviewModal" class="hidden absolute inset-0 z-50 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <div class="bg-white text-slate-800 w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+      <div class="bg-[#10183d] text-white px-4 py-3 flex justify-between items-center shrink-0">
+        <div>
+          <h3 class="font-bold text-sm text-amber-300">✨ SOP 文件自動結構化轉換預覽</h3>
+          <p id="docConvertSummaryText" class="text-[11px] text-sky-200 mt-0.5">已自動萃取步驟與檢索關鍵字，確認後即寫入知識庫供工程師查詢。</p>
+        </div>
+        <button type="button" onclick="closeDocConvertPreviewModal()" class="text-slate-300 hover:text-white text-base">✕</button>
+      </div>
+
+      <div id="docConvertPreviewList" class="p-4 overflow-y-auto flex-1 space-y-3 text-xs bg-slate-50"></div>
+
+      <div class="bg-white px-4 py-3 border-t border-slate-200 flex justify-between items-center shrink-0">
+        <span class="text-[11px] text-slate-500">提示：寫入後新進工程師即可在查詢庫與小威對話中即時檢索操作。</span>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="closeDocConvertPreviewModal()" class="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg hover:bg-slate-100 font-medium">
+            取消
+          </button>
+          <button type="button" id="btnConfirmDocConvertSave" onclick="confirmSaveConvertedDocRecords()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow">
+            ✅ 確認寫入知識庫
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -2054,6 +2141,11 @@
         if (mgmtSec) mgmtSec.classList.add('hidden');
         const userSec = document.getElementById('userSection');
         if (userSec) userSec.classList.remove('hidden');
+        const engBtn = document.getElementById('engSopWorkspaceBtn');
+        if (engBtn) {
+          if (user.role === 'engineer') engBtn.classList.remove('hidden');
+          else engBtn.classList.add('hidden');
+        }
 
         try { window.fetchKbFromSupabase(); } catch(e){}
 
@@ -3626,162 +3718,591 @@ ${stepsText}
       }
     };
 
+    let pendingConvertedDocRecords = [];
+
+    window.openEngineerSopPortalModal = async function() {
+      const modal = document.getElementById('engineerSopPortalModal');
+      if (modal) modal.classList.remove('hidden');
+      await window.fetchKbFromSupabase();
+      renderEngineerSopCatalog();
+    };
+
+    window.closeEngineerSopPortalModal = function() {
+      const modal = document.getElementById('engineerSopPortalModal');
+      if (modal) modal.classList.add('hidden');
+    };
+
+    window.closeDocConvertPreviewModal = function() {
+      const modal = document.getElementById('docConvertPreviewModal');
+      if (modal) modal.classList.add('hidden');
+      pendingConvertedDocRecords = [];
+    };
+
+    window.launchSopGuidanceForEngineer = function(sopId) {
+      window.closeEngineerSopPortalModal();
+      const sop = knowledgeBase.find(k => k.sop_id === sopId);
+      if (!sop) return;
+      window.appendUserChat('user', `查閱 SOP 操作指引：[${sop.sop_id}] ${sop.title}`);
+      window.proceedGuidanceSteps(sop.sop_id);
+    };
+
+    window.renderEngineerSopCatalog = function() {
+      const listEl = document.getElementById('engSopCatalogList');
+      const countEl = document.getElementById('engSopCatalogCount');
+      if (!listEl) return;
+
+      const q = String(document.getElementById('engSopSearchInput')?.value || '').trim().toLowerCase();
+      const audFilter = String(document.getElementById('engSopAudienceFilter')?.value || 'ALL');
+      const accessible = getAccessibleKnowledgeBase(knowledgeBase);
+
+      const filtered = accessible.filter(k => {
+        if (audFilter !== 'ALL' && (k.target_audience || '使用者') !== audFilter) return false;
+        if (!q) return true;
+        const kwText = Array.isArray(k.keywords) ? k.keywords.join(' ') : String(k.keywords || '');
+        const hay = `${k.sop_id || ''} ${k.category || ''} ${k.title || ''} ${kwText} ${k.safe_steps || ''}`.toLowerCase();
+        return hay.includes(q);
+      });
+
+      if (countEl) {
+        countEl.innerText = `共找到 ${filtered.length} 筆可操作 SOP（支援直接啟動逐步排查或檢視完整步驟）`;
+      }
+
+      if (filtered.length === 0) {
+        listEl.innerHTML = '<div class="col-span-2 text-center text-slate-400 py-8">查無相符 SOP 條目，您可點擊上方「選擇 .pdf / .doc / .pptx 匯入」新增文件。</div>';
+        return;
+      }
+
+      listEl.innerHTML = filtered.slice(0, 60).map(k => {
+        const kwStr = Array.isArray(k.keywords) ? k.keywords.slice(0, 6).join(', ') : String(k.keywords || '');
+        const audTag = k.target_audience === '資訊室'
+          ? '<span class="px-1.5 py-0.5 rounded text-[10px] bg-purple-900/80 text-purple-200 border border-purple-500/60">🔒 資訊室手冊</span>'
+          : '<span class="px-1.5 py-0.5 rounded text-[10px] bg-sky-900/70 text-sky-200 border border-sky-500/50">全院通用</span>';
+        const stTag = k.status === '已審核'
+          ? '<span class="px-1.5 py-0.5 rounded text-[10px] bg-emerald-900/70 text-emerald-300 border border-emerald-500/50">已審核</span>'
+          : '<span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-900/70 text-amber-300 border border-amber-500/50">草稿待審</span>';
+
+        return `
+          <div class="p-3 bg-slate-800 border border-slate-700 rounded-xl flex flex-col justify-between space-y-2 hover:border-emerald-500/60 transition">
+            <div class="space-y-1.5">
+              <div class="flex flex-wrap items-start justify-between gap-1.5">
+                <span class="font-bold text-sky-300 leading-snug">[${k.sop_id}] ${k.title}</span>
+                <div class="flex items-center gap-1 shrink-0">${stTag}${audTag}</div>
+              </div>
+              <div class="text-[10px] text-slate-400">分類：${k.category || '一般'} ｜ 關鍵字：${kwStr}</div>
+              <div class="text-[11px] text-slate-200 whitespace-pre-line bg-slate-900/80 p-2 rounded max-h-32 overflow-y-auto leading-relaxed">${k.safe_steps || ''}</div>
+            </div>
+            <div class="flex justify-end gap-1.5 pt-1 border-t border-slate-700/70">
+              <button type="button" onclick="openEditSopModal('${k.sop_id}')" class="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 text-amber-300 rounded text-[11px] font-medium">
+                ✏️ 增修內容
+              </button>
+              <button type="button" onclick="launchSopGuidanceForEngineer('${k.sop_id}')" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold">
+                ▶️ 逐步操作引導
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    };
+
+    async function extractTextFromPdfFile(file) {
+      const arrayBuffer = await file.arrayBuffer();
+      if (window.pdfjsLib) {
+        if (!window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+        }
+        const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const pages = [];
+        const maxPages = Math.min(pdf.numPages, 40);
+        for (let p = 1; p <= maxPages; p++) {
+          const page = await pdf.getPage(p);
+          const content = await page.getTextContent();
+          const line = content.items.map(it => it.str).join(' ').replace(/\s+/g, ' ').trim();
+          if (line) pages.push(`【第 ${p} 頁】${line}`);
+        }
+        return pages.join('\n');
+      }
+      return '';
+    }
+
+    async function extractTextFromDocOrPptFile(file, ext) {
+      const arrayBuffer = await file.arrayBuffer();
+      // 1. OOXML 格式 (.docx / .pptx) 可直接透過 JSZip 解壓 XML 取得完整段落與投影片文字
+      if ((ext === '.docx' || ext === '.pptx') && window.JSZip) {
+        try {
+          const zip = await window.JSZip.loadAsync(arrayBuffer);
+          const parser = new DOMParser();
+          if (ext === '.docx' && zip.file('word/document.xml')) {
+            const xmlStr = await zip.file('word/document.xml').async('string');
+            const xmlDoc = parser.parseFromString(xmlStr, 'text/xml');
+            const paragraphs = Array.from(xmlDoc.getElementsByTagName('w:p'));
+            const lines = paragraphs.map(p =>
+              Array.from(p.getElementsByTagName('w:t')).map(t => t.textContent).join('')
+            ).map(s => s.trim()).filter(Boolean);
+            if (lines.length > 0) return lines.join('\n');
+          }
+          if (ext === '.pptx') {
+            const slideKeys = Object.keys(zip.files)
+              .filter(k => /^ppt\/slides\/slide[0-9]+\.xml$/i.test(k))
+              .sort((a, b) => {
+                const na = parseInt(a.match(/[0-9]+/)?.[0] || '0', 10);
+                const nb = parseInt(b.match(/[0-9]+/)?.[0] || '0', 10);
+                return na - nb;
+              });
+            const slideTexts = [];
+            for (let i = 0; i < slideKeys.length; i++) {
+              const sXml = await zip.file(slideKeys[i]).async('string');
+              const sDoc = parser.parseFromString(sXml, 'text/xml');
+              const texts = Array.from(sDoc.getElementsByTagName('a:t')).map(t => t.textContent).filter(Boolean);
+              if (texts.length > 0) {
+                slideTexts.push(`【投影片 ${i + 1}】${texts.join(' ')}`);
+              }
+            }
+            if (slideTexts.length > 0) return slideTexts.join('\n');
+          }
+        } catch (zipErr) {
+          console.warn('OOXML 解析退回二進位文字抽取:', zipErr);
+        }
+      }
+
+      // 2. 傳統二進位 .doc / .ppt 抽取可讀 UTF-16LE 與 UTF-8/ASCII 文字區塊
+      const bytes = new Uint8Array(arrayBuffer);
+      const chunks = [];
+      let utf8Dec = '';
+      try {
+        utf8Dec = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+      } catch (_e) {}
+      const cjkRuns = utf8Dec.match(/[\u4e00-\u9fffA-Za-z0-9\s，。：；、（）()\-_/.:]{8,}/g) || [];
+      cjkRuns.forEach(r => {
+        const cleaned = r.replace(/\s+/g, ' ').trim();
+        if (cleaned.length >= 8 && /[\u4e00-\u9fffA-Za-z]{2,}/.test(cleaned)) chunks.push(cleaned);
+      });
+
+      try {
+        const utf16Dec = new TextDecoder('utf-16le', { fatal: false }).decode(bytes);
+        const u16Runs = utf16Dec.match(/[\u4e00-\u9fffA-Za-z0-9\s，。：；、（）()\-_/.:]{8,}/g) || [];
+        u16Runs.forEach(r => {
+          const cleaned = r.replace(/\s+/g, ' ').trim();
+          if (cleaned.length >= 8 && /[\u4e00-\u9fff]{2,}/.test(cleaned)) chunks.push(cleaned);
+        });
+      } catch (_e) {}
+
+      return Array.from(new Set(chunks)).join('\n').slice(0, 16000);
+    }
+
+    async function convertDocumentToSopRecords(file, extractedText) {
+      const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
+      const isAdmin = currentUser && currentUser.role === 'admin';
+      const defaultAudience = isAdmin
+        ? '使用者'
+        : (document.getElementById('engDocAudienceSelect')?.value || '資訊室');
+      const defaultStatus = isAdmin ? '已審核' : '草稿待審';
+
+      try {
+        const res = await fetchWithTimeout(EDGE_GATEWAY_URL, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${SUPABASE_KEY}`,
+            'apikey': SUPABASE_KEY,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            mode: 'parse_sop_doc',
+            file_name: file.name,
+            file_ext: ext,
+            extracted_text: extractedText.slice(0, 14000),
+            target_audience: defaultAudience,
+            status: defaultStatus,
+            role: currentUser?.role || 'engineer'
+          })
+        }, 15000);
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.ok && Array.isArray(data.records) && data.records.length > 0) {
+            return data.records;
+          }
+        }
+      } catch (e) {
+        console.warn('Edge Function parse_sop_doc 逾時或未啟用，改由 Groq 直連結構化轉換:', e);
+      }
+
+      // Edge Function 尚未部署時的直連 Groq 結構化轉換備援
+      const prompt = `請將以下 SOP 文件內容（檔名：${file.name}）整理為知識庫 JSON 陣列（只輸出純 JSON）：
+{"records":[{"sop_id":"DOC-001","category":"大類-子類","title":"設備或系統|異常現象:處理方式","keywords":["關鍵字1","關鍵字2","關鍵字3"],"followup_questions":"排查確認問句","safe_steps":"1. 步驟一\n2. 步驟二","escalation":"升級條件","urgency":"P2","allow_self_resolve":true}]}
+
+文件內容：
+${extractedText.slice(0, 11000)}`;
+
+      try {
+        const gRes = await fetchWithTimeout(GROQ_DIRECT_URL, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${DEFAULT_GROQ_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: 'openai/gpt-oss-120b',
+            messages: [
+              { role: 'system', content: '你是 IT 知識庫轉換助手，嚴格只輸出合法 JSON 物件。' },
+              { role: 'user', content: prompt }
+            ],
+            temperature: 0.15,
+            max_tokens: 1800
+          })
+        }, 12000);
+
+        if (gRes.ok) {
+          const gData = await gRes.json();
+          const raw = String(gData.choices?.[0]?.message?.content || '').trim();
+          const cleaned = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+          const m = cleaned.match(/\{[\s\S]*\}/);
+          const parsed = JSON.parse(m ? m[0] : cleaned);
+          if (parsed && Array.isArray(parsed.records) && parsed.records.length > 0) {
+            return parsed.records.map((r, idx) => ({
+              sop_id: String(r.sop_id || `DOC-${Date.now().toString().slice(-4)}-${idx + 1}`).trim(),
+              category: String(r.category || '匯入文件-操作指引').trim(),
+              title: String(r.title || file.name).trim(),
+              keywords: Array.isArray(r.keywords) ? r.keywords.map(String).filter(Boolean) : [file.name],
+              followup_questions: r.followup_questions || null,
+              safe_steps: String(r.safe_steps || extractedText.slice(0, 1000)).trim(),
+              escalation: String(r.escalation || '若仍無法排除請轉派二線工程師').trim(),
+              urgency: ['P1', 'P2', 'P3'].includes(String(r.urgency || '').toUpperCase()) ? String(r.urgency).toUpperCase() : 'P2',
+              allow_self_resolve: r.allow_self_resolve !== false,
+              status: defaultStatus,
+              target_audience: defaultAudience,
+              source: `文件匯入:${file.name}`
+            }));
+          }
+        }
+      } catch (_err) {}
+
+      const baseTitle = file.name.replace(/\.[^.]+$/, '');
+      return [{
+        sop_id: `DOC-${Date.now().toString().slice(-6)}`,
+        category: '匯入文件-操作指引',
+        title: baseTitle,
+        keywords: [baseTitle, 'SOP', '操作指引'],
+        followup_questions: null,
+        safe_steps: extractedText.slice(0, 1500),
+        escalation: '若依步驟操作仍異常，請轉派資深工程師',
+        urgency: 'P2',
+        allow_self_resolve: true,
+        status: defaultStatus,
+        target_audience: defaultAudience,
+        source: `文件匯入:${file.name}`
+      }];
+    }
+
+    function openDocConvertPreviewModal(records) {
+      pendingConvertedDocRecords = records;
+      const modal = document.getElementById('docConvertPreviewModal');
+      const summary = document.getElementById('docConvertSummaryText');
+      const list = document.getElementById('docConvertPreviewList');
+      if (!modal || !list) return;
+
+      if (summary) {
+        summary.innerText = `已自動轉換出 ${records.length} 筆標準 SOP 條目，您可微調標題、適用對象或步驟後再寫入知識庫。`;
+      }
+
+      list.innerHTML = records.map((r, idx) => `
+        <div class="p-3 bg-white border border-slate-300 rounded-xl space-y-2 shadow-sm">
+          <div class="grid grid-cols-1 sm:grid-cols-4 gap-2">
+            <div>
+              <label class="block text-[10px] font-bold text-slate-500">SOP 編號</label>
+              <input type="text" value="${String(r.sop_id || '').replace(/"/g, '&quot;')}"
+                     onchange="pendingConvertedDocRecords[${idx}].sop_id = this.value.trim()"
+                     class="w-full border border-slate-300 rounded px-2 py-1 text-xs font-mono font-bold">
+            </div>
+            <div class="sm:col-span-2">
+              <label class="block text-[10px] font-bold text-slate-500">SOP 標題</label>
+              <input type="text" value="${String(r.title || '').replace(/"/g, '&quot;')}"
+                     onchange="pendingConvertedDocRecords[${idx}].title = this.value.trim()"
+                     class="w-full border border-slate-300 rounded px-2 py-1 text-xs font-bold">
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-slate-500">適用對象</label>
+              <select onchange="pendingConvertedDocRecords[${idx}].target_audience = this.value"
+                      class="w-full border border-slate-300 rounded px-2 py-1 text-xs bg-white font-bold">
+                <option value="資訊室" ${r.target_audience === '資訊室' ? 'selected' : ''}>資訊室（工程師）</option>
+                <option value="使用者" ${r.target_audience === '使用者' ? 'selected' : ''}>使用者（全院）</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+              <label class="block text-[10px] font-bold text-slate-500">分類</label>
+              <input type="text" value="${String(r.category || '').replace(/"/g, '&quot;')}"
+                     onchange="pendingConvertedDocRecords[${idx}].category = this.value.trim()"
+                     class="w-full border border-slate-300 rounded px-2 py-1 text-xs">
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-slate-500">檢索關鍵字（逗號分隔）</label>
+              <input type="text" value="${(Array.isArray(r.keywords) ? r.keywords.join(', ') : '').replace(/"/g, '&quot;')}"
+                     onchange="pendingConvertedDocRecords[${idx}].keywords = this.value.split(/[,，、]+/).map(s=>s.trim()).filter(Boolean)"
+                     class="w-full border border-slate-300 rounded px-2 py-1 text-xs">
+            </div>
+          </div>
+          <div>
+            <label class="block text-[10px] font-bold text-slate-500">標準排查與操作步驟</label>
+            <textarea rows="4" onchange="pendingConvertedDocRecords[${idx}].safe_steps = this.value"
+                      class="w-full border border-slate-300 rounded p-2 text-xs leading-relaxed">${String(r.safe_steps || '')}</textarea>
+          </div>
+        </div>
+      `).join('');
+
+      modal.classList.remove('hidden');
+    }
+
+    window.confirmSaveConvertedDocRecords = async function() {
+      if (!supabaseClient || !pendingConvertedDocRecords.length) return;
+      const btn = document.getElementById('btnConfirmDocConvertSave');
+      if (btn) {
+        btn.innerText = '寫入知識庫中...';
+        btn.disabled = true;
+      }
+
+      try {
+        const isAdmin = currentUser && currentUser.role === 'admin';
+        const nowStr = new Date().toISOString().slice(0, 10);
+        const rowsToUpsert = pendingConvertedDocRecords.map(r => {
+          const kws = Array.isArray(r.keywords) ? [...r.keywords] : [];
+          if (r.title && !kws.includes(r.title)) kws.push(r.title);
+          return {
+            sop_id: r.sop_id,
+            category: r.category || '匯入文件-操作指引',
+            title: r.title,
+            keywords: kws,
+            symptom: r.title,
+            safe_steps: r.safe_steps,
+            allow_self_resolve: r.allow_self_resolve !== false,
+            escalate_dept: '維護工程組',
+            urgency: r.urgency || 'P2',
+            kb_type: 'SOP',
+            status: isAdmin ? (r.status || '已審核') : '草稿待審',
+            target_audience: r.target_audience || '資訊室',
+            followup_questions: r.followup_questions || null,
+            escalation: r.escalation || null,
+            reviewer: isAdmin ? (currentUser?.name || 'Admin') : null,
+            last_review_date: isAdmin ? nowStr : null,
+            source: r.source || '文件匯入'
+          };
+        });
+
+        const { error } = await supabaseClient
+          .from('kb_solutions')
+          .upsert(rowsToUpsert, { onConflict: 'sop_id' });
+
+        if (error) throw error;
+
+        alert(`🎉 已成功將 ${rowsToUpsert.length} 筆轉換後的 SOP 寫入知識庫！${isAdmin ? '' : '（狀態：草稿待審，已可於工程師查詢庫檢索操作）'}`);
+        window.closeDocConvertPreviewModal();
+        await window.fetchKbFromSupabase();
+        renderEngineerSopCatalog();
+      } catch (err) {
+        alert('❌ 寫入知識庫失敗：' + err.message);
+      } finally {
+        if (btn) {
+          btn.innerText = '✅ 確認寫入知識庫';
+          btn.disabled = false;
+        }
+      }
+    };
+
     window.handleSmartKbUpload = async function(event) {
       if (!supabaseClient) {
         alert("資料庫連線尚未就緒，請重新整理頁面後再試。");
         return;
       }
 
-      const file = event.target.files[0];
-      if (!file) return;
+      const files = Array.from(event.target.files || []);
+      if (files.length === 0) return;
 
-      const fileName = file.name.toLowerCase();
+      const progressBanner = document.getElementById('docParseProgressBanner');
+      const docExts = ['.pdf', '.doc', '.docx', '.ppt', '.pptx'];
+      const docFiles = files.filter(f => docExts.some(ext => f.name.toLowerCase().endsWith(ext)));
+      const tableFiles = files.filter(f => !docExts.some(ext => f.name.toLowerCase().endsWith(ext)));
 
       try {
-        let rawRecords = [];
-
-        if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
-          const buffer = await file.arrayBuffer();
-          const workbook = XLSX.read(buffer, { type: 'array' });
-          const sheetName = workbook.SheetNames.includes('知識庫') ? '知識庫' : workbook.SheetNames[0];
-          rawRecords = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
-        } else if (fileName.endsWith('.json')) {
-          const text = await file.text();
-          const parsed = JSON.parse(text);
-
-          if (Array.isArray(parsed)) {
-            rawRecords = parsed;
-          } else if (parsed && Array.isArray(parsed.records)) {
-            rawRecords = parsed.records;
-          } else if (parsed && typeof parsed === 'object') {
-            for (const key of Object.keys(parsed)) {
-              if (Array.isArray(parsed[key]) && parsed[key].length > 0) {
-                rawRecords = parsed[key];
-                break;
-              }
+        // A. 處理 .pdf / .doc / .docx / .ppt / .pptx 文件自動解析並轉為知識庫格式
+        if (docFiles.length > 0) {
+          let allConverted = [];
+          for (let i = 0; i < docFiles.length; i++) {
+            const f = docFiles[i];
+            const ext = '.' + (f.name.split('.').pop() || '').toLowerCase();
+            if (progressBanner) {
+              progressBanner.classList.remove('hidden');
+              progressBanner.innerText = `⏳ 正在解析文件 (${i + 1}/${docFiles.length})：「${f.name}」並自動轉換為 SOP 知識庫格式...`;
             }
+            let text = '';
+            if (ext === '.pdf') {
+              text = await extractTextFromPdfFile(f);
+            } else {
+              text = await extractTextFromDocOrPptFile(f, ext);
+            }
+            if (!text || text.trim().length < 15) {
+              alert(`⚠️ 檔案「${f.name}」未能萃取出足夠文字（若為純掃描圖片型 PDF，建議先轉文字 PDF 或以拍照上傳辨識）。`);
+              continue;
+            }
+            const recs = await convertDocumentToSopRecords(f, text);
+            allConverted = allConverted.concat(recs);
           }
-        } else {
-          alert("不支援的檔案格式，請上傳 .xlsx, .xls 或 .json 檔案！");
-          return;
+          if (progressBanner) progressBanner.classList.add('hidden');
+          if (allConverted.length > 0) {
+            openDocConvertPreviewModal(allConverted);
+          }
         }
 
-        if (!rawRecords || rawRecords.length === 0) {
-          alert("❌ 檔案內查無有效資料，請確認檔案格式是否正確！");
-          return;
-        }
+        // B. 處理既有 Excel (.xlsx/.xls) 與 JSON 批次匯入
+        for (const file of tableFiles) {
+          const fileName = file.name.toLowerCase();
+          let rawRecords = [];
 
-        const getVal = (obj, candidates) => {
-          for (const cand of candidates) {
-            const target = cand.trim().toLowerCase();
-            for (const k of Object.keys(obj)) {
-              if (k.trim().toLowerCase().replace('\ufeff', '') === target && obj[k] !== undefined && obj[k] !== null) {
-                return obj[k];
+          if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+            const buffer = await file.arrayBuffer();
+            const workbook = XLSX.read(buffer, { type: 'array' });
+            const sheetName = workbook.SheetNames.includes('知識庫') ? '知識庫' : workbook.SheetNames[0];
+            rawRecords = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+          } else if (fileName.endsWith('.json')) {
+            const text = await file.text();
+            const parsed = JSON.parse(text);
+
+            if (Array.isArray(parsed)) {
+              rawRecords = parsed;
+            } else if (parsed && Array.isArray(parsed.records)) {
+              rawRecords = parsed.records;
+            } else if (parsed && typeof parsed === 'object') {
+              for (const key of Object.keys(parsed)) {
+                if (Array.isArray(parsed[key]) && parsed[key].length > 0) {
+                  rawRecords = parsed[key];
+                  break;
+                }
               }
             }
-          }
-          return null;
-        };
-
-        const payload = [];
-        for (let i = 0; i < rawRecords.length; i++) {
-          const r = rawRecords[i];
-          if (!r || typeof r !== 'object') continue;
-
-          const sopIdRaw = getVal(r, ['KB編號', 'sop_id', 'id', '編號']);
-          const titleRaw = getVal(r, ['標題', 'title', '問題名稱', '問題說明']);
-
-          if (!sopIdRaw && !titleRaw) continue;
-
-          const sopId = String(sopIdRaw || `KB-${i + 1}`).trim();
-          const title = String(titleRaw || '未命名問題').trim();
-          const status = String(getVal(r, ['狀態', 'status']) || '草稿待審').trim();
-          const targetAudience = String(getVal(r, ['適用對象', 'target_audience']) || '使用者').trim();
-
-          const mainCat = getVal(r, ['大類', 'main_category', 'category', '分類']) || '';
-          const subCat = getVal(r, ['子類', 'sub_category']) || '';
-          const category = getVal(r, ['category']) || (mainCat ? (subCat ? `${mainCat}-${subCat}` : mainCat) : '一般分類');
-
-          let keywords = [];
-          const kwArr = getVal(r, ['keywords', '檢索關鍵字陣列']);
-          const kwStr = getVal(r, ['使用者常見說法(檢索關鍵字)', '關鍵字', 'keywords']);
-
-          if (Array.isArray(kwArr) && kwArr.length > 0) {
-            keywords = kwArr.map(s => String(s).trim()).filter(Boolean);
-          } else if (typeof kwStr === 'string' && kwStr.trim()) {
-            keywords = kwStr.split(/[,，、/ \t\n]+/).map(s => s.trim()).filter(Boolean);
           } else {
-            keywords = [title];
-          }
-          if (title && !keywords.includes(title)) keywords.push(title);
-
-          const prebuiltSafeSteps = getVal(r, ['safe_steps']);
-          const steps = getVal(r, ['處理步驟/解答', 'raw_steps', 'steps']) || '';
-          const followup = getVal(r, ['AI 追問問題', 'followup_questions', '追問問題']) || '';
-          const escalate = getVal(r, ['升級條件(轉工程師)', 'escalation', '升級條件']) || '';
-
-          let safeSteps = prebuiltSafeSteps ? String(prebuiltSafeSteps).trim() : (steps ? String(steps).trim() : '');
-          if (!prebuiltSafeSteps && (followup || escalate)) {
-            safeSteps = '';
-            if (followup) safeSteps += `💡【排查確認】：${String(followup).trim()}\n\n`;
-            if (steps) safeSteps += `🛠️【排除步驟】：\n${String(steps).trim()}`;
-            if (escalate && escalate !== '無') safeSteps += `\n\n⚠️【升級派工條件】：${String(escalate).trim()}`;
+            alert(`不支援的檔案格式：${file.name}（支援 .pdf, .doc, .docx, .ppt, .pptx, .xlsx, .xls, .json）`);
+            continue;
           }
 
-          const allowSelfRaw = getVal(r, ['allow_self_resolve', '使用者可自行處理']);
-          const allowSelf = (allowSelfRaw === '是' || allowSelfRaw === '部分' || allowSelfRaw === true || allowSelfRaw === 'true');
+          if (!rawRecords || rawRecords.length === 0) {
+            alert(`❌ 檔案「${file.name}」內查無有效資料！`);
+            continue;
+          }
 
-          const escalateDept = getVal(r, ['escalate_dept']) || '維護工程組';
-          const urgency = getVal(r, ['urgency']) || ((category.includes('HIS') || category.includes('急診') || category.includes('門診')) ? 'P1' : 'P2');
+          const getVal = (obj, candidates) => {
+            for (const cand of candidates) {
+              const target = cand.trim().toLowerCase();
+              for (const k of Object.keys(obj)) {
+                if (k.trim().toLowerCase().replace('\ufeff', '') === target && obj[k] !== undefined && obj[k] !== null) {
+                  return obj[k];
+                }
+              }
+            }
+            return null;
+          };
 
-          payload.push({
-            sop_id: sopId,
-            category: category,
-            title: title,
-            keywords: keywords,
-            symptom: getVal(r, ['symptom']) || `【${subCat || '常規'}】${title}`,
-            safe_steps: safeSteps || '詳見現場維護手冊',
-            allow_self_resolve: allowSelf,
-            escalate_dept: escalateDept,
-            urgency: urgency,
-            kb_type: getVal(r, ['type', 'kb_type', '類型']) || 'SOP',
-            status: status,
-            target_audience: targetAudience,
-            reviewer: getVal(r, ['reviewer', '負責人']) || null,
-            last_review_date: getVal(r, ['last_review_date', '最後審核日']) || null,
-            review_comment: getVal(r, ['review_comment', '審核意見']) || null,
-            followup_questions: followup || null,
-            escalation: escalate || null,
-            source: getVal(r, ['source', '資料來源']) || null
-          });
+          const isAdmin = currentUser && currentUser.role === 'admin';
+          const payload = [];
+          for (let i = 0; i < rawRecords.length; i++) {
+            const r = rawRecords[i];
+            if (!r || typeof r !== 'object') continue;
+
+            const sopIdRaw = getVal(r, ['KB編號', 'sop_id', 'id', '編號']);
+            const titleRaw = getVal(r, ['標題', 'title', '問題名稱', '問題說明']);
+            if (!sopIdRaw && !titleRaw) continue;
+
+            const sopId = String(sopIdRaw || `KB-${i + 1}`).trim();
+            const title = String(titleRaw || '未命名問題').trim();
+            const rawStatus = String(getVal(r, ['狀態', 'status']) || '草稿待審').trim();
+            const status = isAdmin ? rawStatus : '草稿待審';
+            const targetAudience = String(getVal(r, ['適用對象', 'target_audience']) || '使用者').trim();
+
+            const mainCat = getVal(r, ['大類', 'main_category', 'category', '分類']) || '';
+            const subCat = getVal(r, ['子類', 'sub_category']) || '';
+            const category = getVal(r, ['category']) || (mainCat ? (subCat ? `${mainCat}-${subCat}` : mainCat) : '一般分類');
+
+            let keywords = [];
+            const kwArr = getVal(r, ['keywords', '檢索關鍵字陣列']);
+            const kwStr = getVal(r, ['使用者常見說法(檢索關鍵字)', '關鍵字', 'keywords']);
+
+            if (Array.isArray(kwArr) && kwArr.length > 0) {
+              keywords = kwArr.map(s => String(s).trim()).filter(Boolean);
+            } else if (typeof kwStr === 'string' && kwStr.trim()) {
+              keywords = kwStr.split(/[,，、/ \t\n]+/).map(s => s.trim()).filter(Boolean);
+            } else {
+              keywords = [title];
+            }
+            if (title && !keywords.includes(title)) keywords.push(title);
+
+            const prebuiltSafeSteps = getVal(r, ['safe_steps']);
+            const steps = getVal(r, ['處理步驟/解答', 'raw_steps', 'steps']) || '';
+            const followup = getVal(r, ['AI 追問問題', 'followup_questions', '追問問題']) || '';
+            const escalate = getVal(r, ['升級條件(轉工程師)', 'escalation', '升級條件']) || '';
+
+            let safeSteps = prebuiltSafeSteps ? String(prebuiltSafeSteps).trim() : (steps ? String(steps).trim() : '');
+            if (!prebuiltSafeSteps && (followup || escalate)) {
+              safeSteps = '';
+              if (followup) safeSteps += `💡【排查確認】：${String(followup).trim()}\n\n`;
+              if (steps) safeSteps += `🛠️【排除步驟】：\n${String(steps).trim()}`;
+              if (escalate && escalate !== '無') safeSteps += `\n\n⚠️【升級派工條件】：${String(escalate).trim()}`;
+            }
+
+            const allowSelfRaw = getVal(r, ['allow_self_resolve', '使用者可自行處理']);
+            const allowSelf = (allowSelfRaw === '是' || allowSelfRaw === '部分' || allowSelfRaw === true || allowSelfRaw === 'true');
+
+            const escalateDept = getVal(r, ['escalate_dept']) || '維護工程組';
+            const urgency = getVal(r, ['urgency']) || ((category.includes('HIS') || category.includes('急診') || category.includes('門診')) ? 'P1' : 'P2');
+
+            payload.push({
+              sop_id: sopId,
+              category: category,
+              title: title,
+              keywords: keywords,
+              symptom: getVal(r, ['symptom']) || `【${subCat || '常規'}】${title}`,
+              safe_steps: safeSteps || '詳見現場維護手冊',
+              allow_self_resolve: allowSelf,
+              escalate_dept: escalateDept,
+              urgency: urgency,
+              kb_type: getVal(r, ['type', 'kb_type', '類型']) || 'SOP',
+              status: status,
+              target_audience: targetAudience,
+              reviewer: getVal(r, ['reviewer', '負責人']) || null,
+              last_review_date: getVal(r, ['last_review_date', '最後審核日']) || null,
+              review_comment: getVal(r, ['review_comment', '審核意見']) || null,
+              followup_questions: followup || null,
+              escalation: escalate || null,
+              source: getVal(r, ['source', '資料來源']) || null
+            });
+          }
+
+          if (payload.length === 0) {
+            alert(`❌ 檔案「${file.name}」未能轉換任何有效資料！`);
+            continue;
+          }
+
+          if (!confirm(`已成功解析 ${payload.length} 筆 SOP 資料。
+確定要正式寫入 Supabase 資料庫嗎？`)) {
+            continue;
+          }
+
+          const chunkSize = 50;
+          let successCount = 0;
+          for (let i = 0; i < payload.length; i += chunkSize) {
+            const chunk = payload.slice(i, i + chunkSize);
+            const { error } = await supabaseClient
+              .from('kb_solutions')
+              .upsert(chunk, { onConflict: 'sop_id' });
+            if (error) throw error;
+            successCount += chunk.length;
+          }
+
+          alert(`🎉 恭喜！已成功將 ${successCount} 筆知識庫寫入 Supabase！`);
+          await window.fetchKbFromSupabase();
+          renderEngineerSopCatalog();
         }
-
-        if (payload.length === 0) {
-          alert("❌ 未能成功轉換任何有效資料！");
-          return;
-        }
-
-        if (!confirm(`已成功解析 ${payload.length} 筆 SOP 資料（含審核狀態與適用對象權限）。\n確定要正式寫入 Supabase 資料庫嗎？`)) {
-          return;
-        }
-
-        const chunkSize = 50;
-        let successCount = 0;
-        for (let i = 0; i < payload.length; i += chunkSize) {
-          const chunk = payload.slice(i, i + chunkSize);
-          const { error } = await supabaseClient
-            .from('kb_solutions')
-            .upsert(chunk, { onConflict: 'sop_id' });
-
-          if (error) throw error;
-          successCount += chunk.length;
-        }
-
-        alert(`🎉 恭喜！已成功將 ${successCount} 筆知識庫寫入 Supabase！`);
-        window.fetchKbFromSupabase();
       } catch (err) {
+        if (progressBanner) progressBanner.classList.add('hidden');
         console.error("批次匯入失敗:", err);
-        alert("❌ 匯入失敗，原因：" + (err.message || "請確認已先執行 import_kb_solutions_v3.sql 擴充治理欄位"));
+        alert("❌ 匯入失敗，原因：" + (err.message || "請檢查檔案內容或網路狀態"));
       } finally {
         event.target.value = '';
       }
