@@ -968,6 +968,83 @@
     </div>
   </div>
 
+  <!-- 5B. 管理者修改使用者帳號與權限 Modal -->
+  <div id="userEditModal" class="hidden absolute inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <div class="bg-white text-slate-800 w-full max-w-lg rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+      <div class="bg-[#10183d] text-white px-4 py-2.5 flex justify-between items-center shrink-0">
+        <h3 id="userEditModalTitle" class="font-bold text-sm text-sky-300 flex items-center gap-1.5">
+          ✏️ 修改使用者帳號與權限
+        </h3>
+        <button type="button" onclick="closeEditUserModal()" class="text-slate-400 hover:text-white text-base">✕</button>
+      </div>
+
+      <form onsubmit="handleSaveUserEditSubmit(event)" class="p-4 space-y-3 overflow-y-auto flex-1 text-xs">
+        <input type="hidden" id="edit_user_id">
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">使用者姓名 / 稱謂 <span class="text-rose-500">*</span></label>
+            <input type="text" id="edit_user_name" required class="w-full border border-slate-300 rounded px-2.5 py-1.5 text-xs font-bold focus:outline-none focus:border-indigo-600">
+          </div>
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">電子信箱 / 帳號 <span class="text-rose-500">*</span></label>
+            <input type="email" id="edit_user_email" required class="w-full border border-slate-300 rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-600">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">客戶公司名稱 <span class="text-rose-500">*</span></label>
+            <input type="text" id="edit_user_company" required class="w-full border border-slate-300 rounded px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-indigo-600">
+          </div>
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">管轄單位 / 院區 / 分公司 <span class="text-rose-500">*</span></label>
+            <input type="text" id="edit_user_jurisdiction" required class="w-full border border-slate-300 rounded px-2.5 py-1.5 text-xs font-mono focus:outline-none focus:border-indigo-600">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">科室 / 部門 <span class="text-rose-500">*</span></label>
+            <input type="text" id="edit_user_dept" required class="w-full border border-slate-300 rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-600">
+          </div>
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">聯絡電話 / 分機</label>
+            <input type="text" id="edit_user_phone" class="w-full border border-slate-300 rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-600">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">帳號審核狀態</label>
+            <select id="edit_user_status" class="w-full border border-slate-300 rounded px-2 py-1.5 text-xs bg-white font-bold text-indigo-950">
+              <option value="approved">已核准（可登入）</option>
+              <option value="pending">待審核</option>
+              <option value="rejected">已停用</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">系統角色權限</label>
+            <select id="edit_user_role" class="w-full border border-slate-300 rounded px-2 py-1.5 text-xs bg-white font-bold text-indigo-950">
+              <option value="user">一般使用者（user）</option>
+              <option value="engineer">維護工程師（engineer）</option>
+              <option value="admin">系統管理者（admin）</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex justify-end space-x-2 pt-2 border-t border-slate-200">
+          <button type="button" onclick="closeEditUserModal()" class="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg hover:bg-slate-100 font-medium">
+            取消
+          </button>
+          <button type="submit" id="btnSaveUserEdit" class="px-5 py-2 bg-indigo-700 hover:bg-indigo-800 text-white rounded-lg font-bold shadow">
+            💾 儲存帳號與權限
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- 6. 新增/修改 SOP 條目專用 Modal -->
   <div id="sopEditModal" class="hidden absolute inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
     <div class="bg-white text-slate-800 w-full max-w-xl rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
@@ -3048,6 +3125,8 @@ ${stepsText}
       }
     };
 
+    let adminProfilesCache = [];
+
     window.fetchUsersFromSupabase = async function() {
       if (!supabaseClient) return;
       const tbody = document.getElementById('userTableBody');
@@ -3061,22 +3140,30 @@ ${stepsText}
           .order('created_at', { ascending: false });
 
         if (error) throw error;
+        adminProfilesCache = data || [];
         tbody.innerHTML = '';
         let pending = 0;
 
-        (data || []).forEach(u => {
+        (adminProfilesCache).forEach(u => {
           if (u.status === 'pending') pending++;
+          const stLabel = u.status === 'approved' ? '已核准' : (u.status === 'rejected' ? '已停用' : '待審核');
+          const stStyle = u.status === 'approved'
+            ? 'bg-emerald-900/60 text-emerald-300 border border-emerald-500'
+            : (u.status === 'rejected'
+              ? 'bg-rose-900/60 text-rose-300 border border-rose-500'
+              : 'bg-amber-900/60 text-amber-300 border border-amber-500');
+
           const tr = document.createElement('tr');
           tr.className = "hover:bg-slate-700/40";
           tr.innerHTML = `
-            <td class="p-2.5 font-medium text-white">${u.name}</td>
+            <td class="p-2.5 font-medium text-white">${u.name || ''}</td>
             <td class="p-2.5">${u.company || ''}</td>
             <td class="p-2.5 font-mono text-sky-300">${u.jurisdiction || 'ALL'}</td>
             <td class="p-2.5">${u.dept || ''}</td>
-            <td class="p-2.5">${u.email}<br><span class="text-slate-400 text-[10px]">${u.phone || ''}</span></td>
+            <td class="p-2.5">${u.email || ''}<br><span class="text-slate-400 text-[10px]">${u.phone || ''}</span></td>
             <td class="p-2.5">
-              <span class="px-2 py-0.5 rounded text-[10px] font-bold ${u.status === 'approved' ? 'bg-emerald-900/60 text-emerald-300 border border-emerald-500' : 'bg-amber-900/60 text-amber-300 border border-amber-500'}">
-                ${u.status === 'approved' ? '已核准' : '待審核'}
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold ${stStyle}">
+                ${stLabel}
               </span>
             </td>
             <td class="p-2.5">
@@ -3086,8 +3173,9 @@ ${stepsText}
                 <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>系統管理者</option>
               </select>
             </td>
-            <td class="p-2.5 text-right">
-              ${u.status === 'pending' ? `<button onclick="approveUserInSupabase('${u.id}', '${u.name}')" class="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-bold">核准開通</button>` : `<span class="text-slate-500 text-[11px]">正常</span>`}
+            <td class="p-2.5 text-right whitespace-nowrap space-x-1">
+              ${u.status === 'pending' ? `<button onclick="approveUserInSupabase('${u.id}', '${String(u.name || '').replace(/'/g, "\'")}')" class="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-bold text-[11px]">核准開通</button>` : ''}
+              <button onclick="openEditUserModal('${u.id}')" class="px-2 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded font-bold text-[11px]">✏️ 修改</button>
             </td>
           `;
           tbody.appendChild(tr);
@@ -3096,6 +3184,103 @@ ${stepsText}
         if (pendingBadge) pendingBadge.innerText = pending;
       } catch (err) {
         tbody.innerHTML = `<tr><td colspan="8" class="p-3 text-center text-rose-400">無法讀取 profiles 表：${err.message}</td></tr>`;
+      }
+    };
+
+    window.openEditUserModal = function(userId) {
+      if (!currentUser || currentUser.role !== 'admin') {
+        alert("⛔ 權限不足：僅系統管理者可修改使用者帳號與權限！");
+        return;
+      }
+      const target = adminProfilesCache.find(u => String(u.id) === String(userId));
+      if (!target) {
+        alert("找不到該筆帳號資料，請先重新整理清單。");
+        return;
+      }
+
+      document.getElementById('userEditModalTitle').innerText = `✏️ 修改使用者帳號與權限（${target.name || target.email}）`;
+      document.getElementById('edit_user_id').value = target.id;
+      document.getElementById('edit_user_name').value = target.name || '';
+      document.getElementById('edit_user_email').value = target.email || '';
+      document.getElementById('edit_user_company').value = target.company || '';
+      document.getElementById('edit_user_jurisdiction').value = target.jurisdiction || '';
+      document.getElementById('edit_user_dept').value = target.dept || '';
+      document.getElementById('edit_user_phone').value = target.phone || '';
+      document.getElementById('edit_user_status').value = target.status || 'approved';
+      document.getElementById('edit_user_role').value = target.role || 'user';
+
+      document.getElementById('userEditModal').classList.remove('hidden');
+    };
+
+    window.closeEditUserModal = function() {
+      const modal = document.getElementById('userEditModal');
+      if (modal) modal.classList.add('hidden');
+    };
+
+    window.handleSaveUserEditSubmit = async function(e) {
+      e.preventDefault();
+      if (!currentUser || currentUser.role !== 'admin') {
+        alert("⛔ 權限不足：僅系統管理者可儲存帳號與權限修改！");
+        return;
+      }
+      if (!supabaseClient) {
+        alert("資料庫連線尚未就緒。");
+        return;
+      }
+
+      const userId = document.getElementById('edit_user_id').value;
+      const nameVal = document.getElementById('edit_user_name').value.trim();
+      const emailVal = document.getElementById('edit_user_email').value.trim().toLowerCase();
+      const companyVal = typeof normalizeCompanyName === 'function'
+        ? normalizeCompanyName(document.getElementById('edit_user_company').value)
+        : document.getElementById('edit_user_company').value.trim();
+      const jurisVal = document.getElementById('edit_user_jurisdiction').value.trim();
+      const deptVal = document.getElementById('edit_user_dept').value.trim();
+      const phoneVal = document.getElementById('edit_user_phone').value.trim();
+      const statusVal = document.getElementById('edit_user_status').value;
+      const roleVal = document.getElementById('edit_user_role').value;
+
+      const btn = document.getElementById('btnSaveUserEdit');
+      if (btn) {
+        btn.innerText = "儲存中...";
+        btn.disabled = true;
+      }
+
+      try {
+        const updatePayload = {
+          name: nameVal,
+          email: emailVal,
+          company: companyVal,
+          jurisdiction: jurisVal,
+          dept: deptVal,
+          phone: phoneVal,
+          status: statusVal,
+          role: roleVal
+        };
+        if (statusVal === 'approved') {
+          updatePayload.approved_at = new Date().toISOString();
+        }
+
+        const { error } = await supabaseClient
+          .from('profiles')
+          .update(updatePayload)
+          .eq('id', userId);
+
+        if (error) throw error;
+
+        alert(`🎉 已更新帳號 [${nameVal}] 的資料與權限！`);
+        window.closeEditUserModal();
+        window.fetchUsersFromSupabase();
+        if (typeof window.fetchSageIncidentsFromSupabase === 'function') {
+          window.fetchSageIncidentsFromSupabase();
+        }
+      } catch (err) {
+        alert("儲存帳號修改失敗：" + err.message);
+      } finally {
+        if (btn) {
+          btn.innerText = "💾 儲存帳號與權限";
+          btn.disabled = false;
+        }
       }
     };
 
@@ -4039,19 +4224,17 @@ ${stepsText}
       const prev = sageSelectedClient || sel.value || 'ALL';
       const clients = new Set();
 
+      // 嚴格以帳號申請（profiles.company）填寫的客戶公司名稱建立客戶選單
       (profileRows || []).forEach(p => {
-        if (p && p.status !== 'rejected') {
-          const compName = normalizeCompanyName(p.company);
-          if (compName && compName !== 'ALL') clients.add(compName);
+        if (!p || p.status === 'rejected') return;
+        const compName = normalizeCompanyName(p.company);
+        if (compName && compName !== 'ALL' && compName !== 'DEFAULT_CLIENT') {
+          clients.add(compName);
         }
       });
 
-      (ticketsRows || []).forEach(t => { const id = resolveRowTenantId(t); if (id && id !== 'DEFAULT_CLIENT') clients.add(id); });
-      (chatRows || []).forEach(c => { const id = resolveRowTenantId(c); if (id && id !== 'DEFAULT_CLIENT') clients.add(id); });
-      (dbIncRows || []).forEach(d => { const id = normalizeCompanyName(d.tenant_id); if (id && id !== 'ALL' && id !== 'DEFAULT_CLIENT') clients.add(id); });
-
       const sorted = Array.from(clients).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
-      sel.innerHTML = '<option value="ALL">全部客戶（跨客戶總覽）</option>' +
+      sel.innerHTML = '<option value="ALL">全部客戶（已註冊公司）</option>' +
         sorted.map(c => `<option value="${c.replace(/"/g, '&quot;')}">${c}</option>`).join('');
 
       if (prev === 'ALL' || sorted.includes(prev)) {
