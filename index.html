@@ -659,78 +659,146 @@
             </div>
           </div>
 
-          <!-- 子分頁 2：通報事件與規範（含事件通報線索登錄與相符比對） -->
+          <!-- 子分頁 2：通報事件與規範（手動新增通報事件 + 參數與規範設定表 + 預警類型） -->
           <div id="sageSubNotify" class="hidden bg-slate-800/90 border border-slate-700 rounded-xl p-4 space-y-4">
             <div class="flex flex-wrap justify-between items-center gap-2">
               <div>
-                <h4 class="text-sm font-bold text-white">通報事件線索與 Alert（P1～P5）分級規範</h4>
-                <p class="text-[11px] text-slate-400">案件原始緊急度（urgency）與系統預警等級（Alert P1～P5）嚴格分離；登錄通報線索後可比對相符報修並產出通報摘要。</p>
+                <h4 class="text-sm font-bold text-white">通報事件與分級規範設定</h4>
+                <p class="text-[11px] text-slate-400">案件原始緊急度（urgency）與系統預警等級（Alert P1～P5）以獨立欄位紀錄；支援預警類型（a. 大量重複案件、b. 資安／異常狀態通報分一般及嚴重）。</p>
               </div>
-              <button onclick="triggerSageNotificationDraft()" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold transition">
-                📣 產生事件通報摘要
-              </button>
-            </div>
-
-            <!-- 新增事件通報線索表單 -->
-            <form onsubmit="handleCreateSageNotification(event)" class="bg-slate-900/90 border border-slate-700 rounded-xl p-3 space-y-2.5 text-xs">
-              <div class="font-bold text-sky-300">➕ 新增事件通報線索（提供比對關鍵字、範圍與服務中斷資訊）</div>
-              <div class="grid grid-cols-1 sm:grid-cols-4 gap-2">
-                <div>
-                  <label class="block text-[11px] text-slate-400 mb-1">通報類型</label>
-                  <select id="ntf_dispatch_type" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white">
-                    <option value="一般案件">一般案件</option>
-                    <option value="資安">資安</option>
-                    <option value="服務異常">服務異常</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="block text-[11px] text-slate-400 mb-1">廠區／單位範圍</label>
-                  <input id="ntf_company_plant" type="text" value="全部廠區" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white">
-                </div>
-                <div>
-                  <label class="block text-[11px] text-slate-400 mb-1">系統／裝置範圍</label>
-                  <input id="ntf_device_model" type="text" value="所有型號／系統" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white">
-                </div>
-                <div>
-                  <label class="block text-[11px] text-slate-400 mb-1">比對關鍵字（逗號分隔）</label>
-                  <input id="ntf_keywords" type="text" placeholder="例：VPN, 登入逾時, 讀卡機" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white">
-                </div>
-              </div>
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
-                <input id="ntf_problem_desc" type="text" required placeholder="輸入通報問題說明（作為語意與上下文比對線索）..."
-                       class="sm:col-span-2 bg-slate-800 border border-slate-600 rounded px-2.5 py-1.5 text-xs text-white">
-                <div class="flex items-center justify-between gap-2">
-                  <label class="flex items-center gap-1 text-[11px] text-amber-300 cursor-pointer">
-                    <input id="ntf_reporting_unavail" type="checkbox" class="rounded">
-                    <span>無法正常報修</span>
-                  </label>
-                  <button type="submit" class="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded font-bold text-xs">
-                    登錄通報
-                  </button>
-                </div>
-              </div>
-            </form>
-
-            <!-- 已登錄通報線索清單 -->
-            <div class="space-y-1.5">
-              <div class="text-xs font-bold text-slate-200">📋 近期事件通報線索（<span id="sageNotifCountLabel">0</span> 筆）</div>
-              <div id="sageNotificationList" class="space-y-1.5 max-h-40 overflow-y-auto text-[11px] text-slate-400">
-                尚無事件通報線索。
+              <div class="flex items-center gap-2">
+                <button onclick="switchSageNotifyMode('notify')" id="sageNotifyModeBtn" class="px-2.5 py-1 bg-indigo-600 text-white rounded text-xs font-bold">
+                  📣 通報事件與新增
+                </button>
+                <button onclick="switchSageNotifyMode('rules')" id="sageRulesModeBtn" class="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-xs font-bold">
+                  ⚙️ 參數與規範設定表
+                </button>
+                <button onclick="triggerSageNotificationDraft()" class="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-xs font-bold transition">
+                  📝 產生通報摘要
+                </button>
               </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs">
-              <div class="bg-slate-900/80 border border-rose-500/40 rounded-lg p-3">
-                <div class="font-bold text-rose-300 mb-1">Alert P1～P2 高優先預警</div>
-                <p class="text-[11px] text-slate-300 leading-relaxed">核心系統／多點異常、資安嚴重事件或門檻達標時提升預警等級；不覆蓋報修單原始 urgency。</p>
+            <!-- 區塊 A：手動新增通報事件 -->
+            <div id="sageNotifyPane" class="space-y-3">
+              <form onsubmit="handleCreateSageNotification(event)" class="bg-slate-900/90 border border-slate-700 rounded-xl p-3 space-y-2.5 text-xs">
+                <div class="font-bold text-sky-300">➕ 手動新增通報事件（指定預警類型、嚴重度與比對範圍）</div>
+                <div class="grid grid-cols-1 sm:grid-cols-5 gap-2">
+                  <div>
+                    <label class="block text-[11px] text-slate-400 mb-1">預警類型</label>
+                    <select id="ntf_alert_type" onchange="handleNtfAlertTypeChange(this.value)" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white">
+                      <option value="大量重複案件">a. 大量重複案件</option>
+                      <option value="資安通報">b. 資安通報</option>
+                      <option value="異常狀態通報">b. 異常狀態通報</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-[11px] text-slate-400 mb-1">通報嚴重度（一般／嚴重）</label>
+                    <select id="ntf_severity" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white">
+                      <option value="general">一般</option>
+                      <option value="severe">嚴重</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-[11px] text-slate-400 mb-1">廠區／單位範圍</label>
+                    <input id="ntf_company_plant" type="text" value="全部廠區" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white">
+                  </div>
+                  <div>
+                    <label class="block text-[11px] text-slate-400 mb-1">系統／裝置範圍</label>
+                    <input id="ntf_device_model" type="text" value="所有型號／系統" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white">
+                  </div>
+                  <div>
+                    <label class="block text-[11px] text-slate-400 mb-1">比對關鍵字（逗號分隔）</label>
+                    <input id="ntf_keywords" type="text" placeholder="例：VPN, 登入逾時, 讀卡機" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white">
+                  </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
+                  <input id="ntf_problem_desc" type="text" required placeholder="手動輸入通報事件說明（作為語意與上下文比對來源）..."
+                         class="sm:col-span-2 bg-slate-800 border border-slate-600 rounded px-2.5 py-1.5 text-xs text-white">
+                  <div class="flex items-center justify-between gap-2">
+                    <label class="flex items-center gap-1 text-[11px] text-amber-300 cursor-pointer">
+                      <input id="ntf_reporting_unavail" type="checkbox" class="rounded">
+                      <span>無法正常報修</span>
+                    </label>
+                    <button type="submit" class="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded font-bold text-xs">
+                      新增通報事件
+                    </button>
+                  </div>
+                </div>
+              </form>
+
+              <div class="space-y-1.5">
+                <div class="text-xs font-bold text-slate-200">📋 已登錄通報事件清單（<span id="sageNotifCountLabel">0</span> 筆）</div>
+                <div id="sageNotificationList" class="space-y-1.5 max-h-40 overflow-y-auto text-[11px] text-slate-400">
+                  尚無通報事件。
+                </div>
               </div>
-              <div class="bg-slate-900/80 border border-amber-500/40 rounded-lg p-3">
-                <div class="font-bold text-amber-300 mb-1">Alert P3～P4 中低預警</div>
-                <p class="text-[11px] text-slate-300 leading-relaxed">具共同線索但影響範圍有限或尚在觀察中，保留證據與反向證據供審核判定。</p>
+            </div>
+
+            <!-- 區塊 B：參數與規範設定表 -->
+            <div id="sageRulesPane" class="hidden space-y-3 text-xs">
+              <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                <div class="bg-slate-900/90 border border-slate-700 rounded-xl p-3 space-y-2">
+                  <div class="font-bold text-indigo-300">⏱️ 時效與量級參數設定（T1～T3 / R0～R3）</div>
+                  <div class="grid grid-cols-3 gap-2">
+                    <div>
+                      <label class="block text-[10px] text-slate-400">T1 長窗(分)</label>
+                      <input id="cfg_t1" type="number" value="4320" onchange="saveSageRuleConfig()" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs font-mono text-white">
+                    </div>
+                    <div>
+                      <label class="block text-[10px] text-slate-400">T2 中窗(分)</label>
+                      <input id="cfg_t2" type="number" value="1440" onchange="saveSageRuleConfig()" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs font-mono text-white">
+                    </div>
+                    <div>
+                      <label class="block text-[10px] text-slate-400">T3 短窗(分)</label>
+                      <input id="cfg_t3" type="number" value="60" onchange="saveSageRuleConfig()" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs font-mono text-white">
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-4 gap-2">
+                    <div>
+                      <label class="block text-[10px] text-slate-400">R0 門檻(筆)</label>
+                      <input id="cfg_r0" type="number" value="1" onchange="saveSageRuleConfig()" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs font-mono text-white">
+                    </div>
+                    <div>
+                      <label class="block text-[10px] text-slate-400">R1 門檻(筆)</label>
+                      <input id="cfg_r1" type="number" value="3" onchange="saveSageRuleConfig()" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs font-mono text-white">
+                    </div>
+                    <div>
+                      <label class="block text-[10px] text-slate-400">R2 門檻(筆)</label>
+                      <input id="cfg_r2" type="number" value="10" onchange="saveSageRuleConfig()" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs font-mono text-white">
+                    </div>
+                    <div>
+                      <label class="block text-[10px] text-slate-400">R3 門檻(筆)</label>
+                      <input id="cfg_r3" type="number" value="50" onchange="saveSageRuleConfig()" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs font-mono text-white">
+                    </div>
+                  </div>
+                </div>
+
+                <div class="bg-slate-900/90 border border-slate-700 rounded-xl p-3 space-y-1.5">
+                  <div class="font-bold text-amber-300">🛡️ 預警類型與欄位分離規範</div>
+                  <div class="text-[11px] text-slate-300 leading-relaxed space-y-1">
+                    <div>• <b>欄位分離：</b>案件原始緊急度（<code class="text-sky-300">urgency</code>）與系統預警等級（<code class="text-rose-300">alert_level</code> P1～P5）分開紀錄，互不覆蓋。</div>
+                    <div>• <b>a. 大量重複案件：</b>依同客戶、同系統／單位及量級門檻（R1/R2/R3）判定預警等級。</div>
+                    <div>• <b>b. 資安／異常狀態通報：</b>區分「一般」與「嚴重」狀態，嚴重資安或無法正常報修提升至高優先預警。</div>
+                  </div>
+                </div>
               </div>
-              <div class="bg-slate-900/80 border border-indigo-500/40 rounded-lg p-3">
-                <div class="font-bold text-indigo-300 mb-1">Alert P5 觀察／基線</div>
-                <p class="text-[11px] text-slate-300 leading-relaxed">群組持續追蹤，不受單一觀察視窗結束影響；若含「已恢復」或裝置衝突則降權防誤判。</p>
+
+              <!-- 規範設定表（C1～C17） -->
+              <div class="bg-slate-900/90 border border-slate-700 rounded-xl p-3 overflow-x-auto">
+                <div class="font-bold text-sky-300 mb-2">📊 預警規範設定表（C1～C17・可調整各規則預警等級 Alert P1～P5）</div>
+                <table class="w-full text-left border-collapse text-[11px]">
+                  <thead class="bg-slate-800 text-slate-300 border-b border-slate-700">
+                    <tr>
+                      <th class="p-2">規則</th>
+                      <th class="p-2">條件類別</th>
+                      <th class="p-2">時效</th>
+                      <th class="p-2">量級</th>
+                      <th class="p-2">預警等級 Alert</th>
+                    </tr>
+                  </thead>
+                  <tbody id="sageRuleMatrixBody" class="divide-y divide-slate-800"></tbody>
+                </table>
               </div>
             </div>
 
@@ -4459,11 +4527,91 @@ ${stepsText}
       }
     };
 
+    const SAGE_RULE_MATRIX_DEFAULTS = [
+      { code: 'C1', category: 'a. 大量重複案件（一般）', window: 'T3', tier: 'R1', alert: 'P5' },
+      { code: 'C2', category: 'a. 大量重複案件（一般）', window: 'T3', tier: 'R2', alert: 'P4' },
+      { code: 'C3', category: 'a. 大量重複案件（一般）', window: 'T3', tier: 'R3', alert: 'P3' },
+      { code: 'C4', category: 'a. 大量重複案件（一般）', window: 'T2', tier: 'R1', alert: 'P4' },
+      { code: 'C5', category: 'a. 大量重複案件（一般）', window: 'T2', tier: 'R2', alert: 'P3' },
+      { code: 'C6', category: 'a. 大量重複案件（一般）', window: 'T2', tier: 'R3', alert: 'P2' },
+      { code: 'C7', category: 'a. 大量重複案件（一般）', window: 'T1', tier: 'R1', alert: 'P3' },
+      { code: 'C8', category: 'a. 大量重複案件（一般）', window: 'T1', tier: 'R2', alert: 'P2' },
+      { code: 'C9', category: 'a. 大量重複案件（一般）', window: 'T1', tier: 'R3', alert: 'P1' },
+      { code: 'C10', category: 'b. 資安通報（一般）', window: 'T3', tier: 'R0', alert: 'P4' },
+      { code: 'C11', category: 'b. 資安通報（一般）', window: 'T2', tier: 'R1', alert: 'P3' },
+      { code: 'C12', category: 'b. 資安通報（一般）', window: 'T1', tier: 'R2', alert: 'P1' },
+      { code: 'C13', category: 'b. 資安通報（嚴重）', window: 'T3', tier: 'R0', alert: 'P3' },
+      { code: 'C14', category: 'b. 資安通報（嚴重）', window: 'T2', tier: 'R1', alert: 'P1' },
+      { code: 'C15', category: 'b. 異常狀態通報（無法報修）', window: 'T1', tier: 'R1', alert: 'P5' },
+      { code: 'C16', category: 'b. 異常狀態通報（無法報修）', window: 'T2', tier: 'R2', alert: 'P3' },
+      { code: 'C17', category: 'b. 異常狀態通報（無法報修）', window: 'T3', tier: 'R3', alert: 'P1' }
+    ];
+    let sageRuleMatrixState = SAGE_RULE_MATRIX_DEFAULTS.map(r => ({ ...r }));
+
+    window.switchSageNotifyMode = function(mode) {
+      const nPane = document.getElementById('sageNotifyPane');
+      const rPane = document.getElementById('sageRulesPane');
+      const nBtn = document.getElementById('sageNotifyModeBtn');
+      const rBtn = document.getElementById('sageRulesModeBtn');
+      if (mode === 'rules') {
+        if (nPane) nPane.classList.add('hidden');
+        if (rPane) rPane.classList.remove('hidden');
+        if (rBtn) rBtn.className = "px-2.5 py-1 bg-indigo-600 text-white rounded text-xs font-bold";
+        if (nBtn) nBtn.className = "px-2.5 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-xs font-bold";
+        renderSageRuleMatrixTable();
+      } else {
+        if (nPane) nPane.classList.remove('hidden');
+        if (rPane) rPane.classList.add('hidden');
+        if (nBtn) nBtn.className = "px-2.5 py-1 bg-indigo-600 text-white rounded text-xs font-bold";
+        if (rBtn) rBtn.className = "px-2.5 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-xs font-bold";
+      }
+    };
+
+    window.handleNtfAlertTypeChange = function(alertType) {
+      const sevSel = document.getElementById('ntf_severity');
+      const unavailChk = document.getElementById('ntf_reporting_unavail');
+      if (alertType === '異常狀態通報' && unavailChk) {
+        unavailChk.checked = true;
+      }
+      if (alertType === '大量重複案件' && sevSel) {
+        sevSel.value = 'general';
+      }
+    };
+
+    window.updateSageRuleRowAlert = function(code, newAlert) {
+      sageRuleMatrixState = sageRuleMatrixState.map(r => r.code === code ? { ...r, alert: newAlert } : r);
+    };
+
+    window.saveSageRuleConfig = function() {
+      // 保留最新 T/R 參數設定於畫面狀態
+      renderSageRuleMatrixTable();
+    };
+
+    function renderSageRuleMatrixTable() {
+      const tbody = document.getElementById('sageRuleMatrixBody');
+      if (!tbody) return;
+      tbody.innerHTML = sageRuleMatrixState.map(r => `
+        <tr class="hover:bg-slate-800/50">
+          <td class="p-2 font-mono font-bold text-indigo-300">${r.code}</td>
+          <td class="p-2 text-slate-200">${r.category}</td>
+          <td class="p-2 font-mono text-slate-300">${r.window}</td>
+          <td class="p-2 font-mono text-slate-300">${r.tier}</td>
+          <td class="p-2">
+            <select onchange="updateSageRuleRowAlert('${r.code}', this.value)" class="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-[11px] font-mono text-rose-200">
+              ${['P1','P2','P3','P4','P5'].map(p => `<option value="${p}" ${r.alert === p ? 'selected' : ''}>${p}</option>`).join('')}
+            </select>
+          </td>
+        </tr>
+      `).join('');
+    }
+
     window.handleCreateSageNotification = async function(e) {
       e.preventDefault();
       const desc = String(document.getElementById('ntf_problem_desc')?.value || '').trim();
       if (!desc) return;
-      const dType = document.getElementById('ntf_dispatch_type')?.value || '一般案件';
+      const alertType = document.getElementById('ntf_alert_type')?.value || '大量重複案件';
+      const sevVal = document.getElementById('ntf_severity')?.value || 'general';
+      const dType = alertType === '資安通報' ? '資安' : (alertType === '異常狀態通報' ? '服務異常' : '一般案件');
       const plant = String(document.getElementById('ntf_company_plant')?.value || '全部廠區').trim();
       const model = String(document.getElementById('ntf_device_model')?.value || '所有型號／系統').trim();
       const kwRaw = String(document.getElementById('ntf_keywords')?.value || '').trim();
@@ -4482,7 +4630,7 @@ ${stepsText}
         device_scope: model === '所有型號／系統' ? 'all' : 'specific',
         problem_description: desc,
         keywords,
-        severity: dType === '資安' ? 'severe' : 'general',
+        severity: sevVal,
         reporting_unavailable: unavail
       };
 
