@@ -2848,12 +2848,59 @@
     // ==========================================
     // J. 對話發送與逐步測試引導流程 (知識庫無答案時自動用 Groq 找解決方法)
     // ==========================================
+    function handleVoiceStepShortcut(rawText) {
+      const clean = String(rawText || '').replace(/[\s，。！？!?.]/g, '').toLowerCase();
+      if (!clean) return false;
+
+      // 1. 追問階段語音快捷操作
+      if (inquiryContext.pendingFollowupSopId) {
+        const pendingId = inquiryContext.pendingFollowupSopId;
+        if (/^(略過追問|直接看步驟|看排除步驟|直接排查|略過)$/.test(clean)) {
+          window.appendUserChat('user', rawText);
+          window.logChatToSupabase('user', rawText);
+          window.proceedGuidanceSteps(pendingId);
+          return true;
+        }
+        if (/^(直接報修|我要報修|幫我報修|叫修)$/.test(clean)) {
+          window.appendUserChat('user', rawText);
+          window.logChatToSupabase('user', rawText);
+          openTicketModalPreview();
+          return true;
+        }
+      }
+
+      // 2. 逐步故障排除引導階段語音回覆快捷指令
+      if (activeGuidance && activeGuidance.sop && Array.isArray(activeGuidance.steps) && activeGuidance.steps.length > 0) {
+        if (/^(已排除|已排除解決|解決了|好了|可以了|正常了|沒問題了|修好了)$/.test(clean)) {
+          window.appendUserChat('user', rawText);
+          window.logChatToSupabase('user', rawText);
+          window.handleStepResolved(true);
+          return true;
+        }
+        if (/^(未排除|沒排除|沒有排除|沒解決|沒有解決|下一步|下一條|還是不行|一樣不行|沒用|無效)$/.test(clean)) {
+          window.appendUserChat('user', rawText);
+          window.logChatToSupabase('user', rawText);
+          window.handleStepResolved(false);
+          return true;
+        }
+        if (/^(直接報修|我要報修|幫我報修|叫修)$/.test(clean)) {
+          window.appendUserChat('user', rawText);
+          window.logChatToSupabase('user', rawText);
+          openTicketModalPreview();
+          return true;
+        }
+      }
+      return false;
+    }
+
     window.handleUserSend = async function() {
       const input = document.getElementById('userMsgInput');
       if (!input) return;
       const q = input.value.trim();
       if (!q) return;
       input.value = '';
+
+      if (handleVoiceStepShortcut(q)) return;
 
       window.appendUserChat('user', q);
       window.logChatToSupabase('user', q);
@@ -2999,7 +3046,7 @@
           `;
           window.appendUserChat('ai', probeHtml, false, 'followup_probe', [sop], sop);
           window.logChatToSupabase('ai', `追問確認 [${sop.sop_id}]: ${followupQ}`);
-          window.speak(`先跟您確認一下：${followupQ}`);
+          window.speak(`先跟您確認一下：${followupQ}。您可以直接用語音回覆。`, () => window.startListening());
           return;
         }
 
@@ -3139,7 +3186,7 @@
 
       window.appendUserChat('ai', stepPrompt, true, 'step_action', [], sop);
       window.logChatToSupabase('ai', `測試步驟 [${sop.sop_id}] (${currentStepIndex + 1}/${total})：${stepContent}`);
-      window.speak(`測試步驟第${currentStepIndex + 1}步：${stepContent}。請問完成後問題是否解決？`);
+      window.speak(`測試步驟第${currentStepIndex + 1}步：${stepContent}。請問完成後問題是否解決？您可以直接說已排除或下一步。`, () => window.startListening());
     }
 
     window.handleStepResolved = function(isResolved) {
