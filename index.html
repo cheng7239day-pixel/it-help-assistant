@@ -1370,13 +1370,19 @@
     }
 
     // 1. 嘗試透過 Supabase Edge Function 呼叫；若尚未部署或逾時則直連 Groq API 尋找解決方法
+    function ansOrJoin(rawAns, stepsArr) {
+      if (rawAns && rawAns !== 'NO_MATCH') return rawAns;
+      return stepsArr.map((s, idx) => `${idx + 1}. ${s}`).join('\n');
+    }
+
     async function askGroqForTroubleshooting(queryText, candidates = [], isDef = false) {
       const hasRefs = Array.isArray(candidates) && candidates.length > 0;
       const refSummary = hasRefs
         ? candidates.slice(0, 5).map((m, i) => `SOP ${i + 1} [${m.item.sop_id}] ${m.item.title}（分類:${m.item.category || ''}）：${(m.item.safe_steps || '').slice(0, 320)}`).join('\n\n')
         : '';
 
-      // 優先透過 Supabase Edge Function (xiaowei-rag-gateway) 執行 kb_solutions/fts 檢索 + Context 組裝 + Groq 生成
+      // 優先透過 Supabase Edge Function (xiaowei-rag-gateway) 執行已審核 kb_solutions/fts 檢索 + Context 組裝 + Groq 生成
+      const candidateSopIds = (candidates || []).map(m => String(m?.item?.sop_id || '').trim()).filter(Boolean);
       try {
         const res = await fetchWithTimeout(EDGE_GATEWAY_URL, {
           method: "POST",
@@ -1412,13 +1418,32 @@
           const stepsArr = Array.isArray(data?.steps) && data.steps.length > 0
             ? data.steps.map(s => String(s || '').trim()).filter(Boolean)
             : [];
-          const ans = data?.answer ? String(data.answer).trim() : '';
-          if (ans || stepsArr.length > 0) {
+          const rawAns = data?.answer ? String(data.answer).trim() : '';
+          const groundedIds = Array.isArray(data?.grounded_sop_ids) && data.grounded_sop_ids.length > 0
+            ? data.grounded_sop_ids.map(String).filter(Boolean)
+            : (data?.matched_sop_id && data.matched_sop_id !== 'NO_MATCH' ? [String(data.matched_sop_id)] : candidateSopIds);
+          const isNoMatch = data?.match_status === 'NO_MATCH' || rawAns === 'NO_MATCH' || groundedIds.length === 0;
+
+          if (isNoMatch) {
             return {
-              text: ans || stepsArr.map((s, idx) => `${idx + 1}. ${s}`).join('\n'),
+              text: "",
+              steps: [],
+              match_status: 'NO_MATCH',
+              grounded_sop_ids: [],
+              matched_sop_id: 'NO_MATCH',
+              matched_sop: null,
+              source: 'NO_MATCH'
+            };
+          }
+
+          if (rawAns || stepsArr.length > 0) {
+            return {
+              text: ansOrJoin(rawAns, stepsArr),
               steps: stepsArr,
-              matched_sop_id: data?.matched_sop_id || 'RAG-CTX',
-              matched_sop: data?.matched_sop || null,
+              match_status: 'MATCHED',
+              grounded_sop_ids: groundedIds,
+              matched_sop_id: groundedIds[0] || String(data?.matched_sop_id || ''),
+              matched_sop: data?.matched_sop || (candidates[0]?.item || null),
               category: data?.category || '',
               escalation: data?.escalation || '',
               source: data?.model_used ? `RAG + ${data.model_used}` : 'Supabase RAG + Groq'
@@ -1426,7 +1451,7 @@
           }
         }
       } catch (e) {
-        console.warn("Edge Function RAG 呼叫異常，改由本地檢索／備援步驟處理:", e);
+        console.warn("Edge Function RAG 呼叫異常，改由備援通道處理:", e);
       }
 
       // 若 Edge Function 暫時無法連線，直接呼叫 Groq API (openai/gpt-oss-120b / openai/gpt-oss-20b) 進行 RAG 推理
@@ -2567,7 +2592,7 @@
 
       return sourceList.filter(k => {
         if (!k || !k.title || String(k.title).trim() === '' || k.title === '未命名問題') return false;
-        if (k.status === '已停用') return false;
+        if (String(k.status || '').trim() !== '已審核') return false;
         const aud = String(k.target_audience || '使用者').trim();
         if (!isItStaff && aud === '資訊室') return false;
         return true;
@@ -3008,6 +3033,26 @@
 
       const groqResult = await askGroqForTroubleshooting(combinedQuery, inquiryContext.retrievedCandidates, isDef);
 
+      if (groqResult && groqResult.match_status === 'NO_MATCH') {
+        window.updateXiaoweiMood('thinking', '「已核准知識庫查無直接命中條目，小威為您標示無命中並提供一般排查參考。」');
+        const noMatchNotice = `查無已核准 SOP 命中（<b>match_status: NO_MATCH</b>），未冒充知識庫命中使用者問題。以下為一般初步檢查方向（僅供參考，非既有 SOP 條目）：`;
+        const fallbackSteps = buildSymptomTroubleshootingSteps(combinedQuery);
+        const noMatchObj = {
+          sop_id: 'NO_MATCH',
+          title: `無已核准 SOP 命中（一般排查參考）：${inquiryContext.originalProblem.slice(0, 24)}`,
+          status: '未命中',
+          urgency: inquiryContext.isMajorIncident ? 'P1' : 'P2',
+          escalate_dept: '維護工程組',
+          allow_self_resolve: true
+        };
+        inquiryContext.matchedSop = noMatchObj;
+        activeGuidance = { sop: noMatchObj, steps: fallbackSteps, currentStepIndex: 0 };
+        window.appendUserChat('ai', noMatchNotice);
+        window.logChatToSupabase('ai', `[NO_MATCH] ${noMatchNotice}`);
+        setTimeout(() => presentCurrentStep(), 250);
+        return;
+      }
+
       if (groqResult && groqResult.text) {
         if (isDef) {
           window.updateXiaoweiMood('step', '「Groq AI 幫您整理好說明囉！」');
@@ -3314,9 +3359,16 @@ ${stepsText}
       const isP1 = inquiryContext.isMajorIncident || (inquiryContext.matchedSop && inquiryContext.matchedSop.urgency === 'P1');
       const assignedDept = inquiryContext.matchedSop?.escalate_dept || '資訊服務處';
 
+      const traceId = `TRC-${currentSessionId}-${sId}`;
+      const groundedIds = Array.isArray(inquiryContext.retrievedCandidates) && inquiryContext.retrievedCandidates.length > 0
+        ? inquiryContext.retrievedCandidates.map(m => m?.item?.sop_id).filter(Boolean)
+        : (inquiryContext.matchedSop?.sop_id && !['NO_MATCH', 'GROQ-SYMPTOM', 'GROQ-IMG', 'GROQ-DEEP'].includes(inquiryContext.matchedSop.sop_id) ? [inquiryContext.matchedSop.sop_id] : []);
       const normTicketCompany = normalizeCompanyName(document.getElementById('simple_company').value) || 'DEFAULT_CLIENT';
       const ticketPayload = {
         service_id: sId,
+        trace_id: traceId,
+        session_id: currentSessionId,
+        grounded_sop_ids: groundedIds,
         tenant_id: normTicketCompany,
         user_id: (currentUser.id && currentUser.id !== 'admin-master') ? currentUser.id : null,
         client_name: document.getElementById('simple_name').value,
@@ -5155,11 +5207,16 @@ ${extractedText.slice(0, 11000)}`;
         const tenant = resolveRowTenantId(c);
         const topic = classifySageTopic(content);
         const unit = c.company ? `${c.company}${c.jurisdiction ? ` (${c.jurisdiction})` : ''}` : (c.jurisdiction || '一般單位');
-        let matchedKey = null;
-        for (const [k, grp] of clusterMap.entries()) {
-          if (grp.tenantId === tenant && grp.topic === topic && !k.endsWith('__已恢復') && !k.endsWith('__待確認')) {
-            matchedKey = k;
-            break;
+        const timeBucket = String(c.created_at || '').slice(0, 10) || 'TODAY';
+        const exactKey = `${tenant}__${topic}__${unit}__${timeBucket}`;
+        let matchedKey = clusterMap.has(exactKey) ? exactKey : null;
+        if (!matchedKey) {
+          for (const [k, grp] of clusterMap.entries()) {
+            const grpDay = String(grp.latestTime || '').slice(0, 10) || 'TODAY';
+            if (grp.tenantId === tenant && grp.topic === topic && grp.unit === unit && grpDay === timeBucket && !k.endsWith('__已恢復') && !k.endsWith('__待確認')) {
+              matchedKey = k;
+              break;
+            }
           }
         }
         if (!matchedKey) {
@@ -5459,11 +5516,21 @@ ${extractedText.slice(0, 11000)}`;
           supabaseClient.from('sage_incidents').select('*').order('updated_at', { ascending: false }).limit(100),
           supabaseClient.from('event_notifications').select('*').order('created_at', { ascending: false }).limit(50)
         ]);
+        const readErrors = [];
+        if (tkRes.error) readErrors.push(`報修表(tickets): ${tkRes.error.message}`);
+        if (chRes.error) readErrors.push(`對話表(chat_logs): ${chRes.error.message}`);
+        if (incRes.error) readErrors.push(`事件表(sage_incidents): ${incRes.error.message}`);
         const pRows = (!profRes.error && Array.isArray(profRes.data)) ? profRes.data : [];
         const tRows = (!tkRes.error && Array.isArray(tkRes.data)) ? tkRes.data : [];
         const cRows = (!chRes.error && Array.isArray(chRes.data)) ? chRes.data : [];
         const iRows = (!incRes.error && Array.isArray(incRes.data)) ? incRes.data : [];
         const nRows = (!ntfRes.error && Array.isArray(ntfRes.data)) ? ntfRes.data : [];
+        if (readErrors.length > 0) {
+          const detailPanel = document.getElementById('sageGroupDetailPanel');
+          if (detailPanel) {
+            detailPanel.innerHTML = `<div class="p-3 bg-rose-950/70 border border-rose-500/60 rounded-xl text-rose-200 text-xs">⚠️ 資料表讀取失敗（非「無事件」）：<br>${readErrors.join('<br>')}</div>`;
+          }
+        }
         sageNotifications = nRows;
         populateSageClientSelector(pRows, tRows, cRows, iRows);
         await window.runSageCorrelationScan(tRows, cRows, nRows);
@@ -5629,7 +5696,7 @@ ${extractedText.slice(0, 11000)}`;
       const target = sageGroups.find(g => g.id === groupId);
       if (supabaseClient && target) {
         try {
-          await supabaseClient.from('sage_incidents').upsert([{
+          const { error: upErr } = await supabaseClient.from('sage_incidents').upsert([{
             tenant_id: target.tenantId || 'DEFAULT_CLIENT',
             group_key: target.id,
             topic: target.topic,
@@ -5680,8 +5747,15 @@ ${extractedText.slice(0, 11000)}`;
             confirmed_by: currentUser?.name || 'Admin',
             confirmed_at: new Date().toISOString()
           }], { onConflict: 'tenant_id,group_key' });
+          if (upErr) {
+            sageConfirmedIds.delete(groupId);
+            alert("❌ 審核寫入失敗，已保留待審核狀態供重試：" + upErr.message);
+            return;
+          }
         } catch (err) {
-          console.warn("寫入 sage_incidents 確認狀態異常:", err);
+          sageConfirmedIds.delete(groupId);
+          alert("❌ 審核寫入失敗，已保留待審核狀態供重試：" + err.message);
+          return;
         }
       }
       await window.fetchSageIncidentsFromSupabase();
