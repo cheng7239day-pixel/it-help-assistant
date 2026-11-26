@@ -180,6 +180,11 @@
           <button type="button" id="loginSubmitBtn" onclick="executeLoginAction()" class="w-full py-2.5 bg-[#131b4d] hover:bg-[#1c276b] text-white font-bold rounded-xl shadow transition text-sm mt-2">
             登入系統
           </button>
+          <div class="text-center pt-1">
+            <button type="button" onclick="openForgotPasswordModal()" class="text-[11px] text-indigo-600 hover:text-indigo-800 underline cursor-pointer">
+              忘記登入密碼？點此驗證帳號並變更密碼
+            </button>
+          </div>
         </div>
 
         <!-- 註冊表單 -->
@@ -869,6 +874,39 @@
     </section>
 
   </main>
+
+  <!-- 3B. 忘記密碼驗證與變更 Modal -->
+  <div id="forgotPwdModal" class="hidden absolute inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <div class="bg-white text-slate-800 w-full max-w-sm rounded-2xl p-5 shadow-2xl border border-slate-200 my-auto">
+      <div class="flex justify-between items-center mb-2.5 border-b border-slate-200 pb-2">
+        <h3 class="font-bold text-sm text-[#10183d]">🔓 忘記密碼 — 帳號核對與變更</h3>
+        <button type="button" onclick="closeForgotPasswordModal()" class="text-slate-400 hover:text-slate-600 text-sm">✕</button>
+      </div>
+      <p class="text-[11px] text-slate-500 mb-3 leading-relaxed">
+        請輸入您的註冊電子信箱與聯絡電話／分機進行核對；核對通過後即可直接設定符合資安規範的新密碼。
+      </p>
+      <form onsubmit="handleForgotPasswordVerify(event)" class="space-y-2.5 text-xs">
+        <div>
+          <label class="block font-medium text-slate-700 mb-1">電子信箱 / 帳號 <span class="text-rose-500">*</span></label>
+          <input type="email" id="forgotPwdEmail" required placeholder="user@company.com"
+                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-600">
+        </div>
+        <div>
+          <label class="block font-medium text-slate-700 mb-1">聯絡電話 / 分機 <span class="text-rose-500">*</span></label>
+          <input type="text" id="forgotPwdPhone" required placeholder="請輸入註冊時填寫的電話或分機"
+                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-600">
+        </div>
+        <div class="flex space-x-2 pt-2">
+          <button type="button" onclick="closeForgotPasswordModal()" class="flex-1 py-2 border border-slate-300 text-slate-600 rounded-xl hover:bg-slate-100 font-medium">
+            取消
+          </button>
+          <button type="submit" id="btnVerifyForgotPwd" class="flex-1 py-2 bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl font-bold shadow">
+            下一步：設定新密碼
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <!-- 4. 變更密碼 Modal -->
   <div id="changePwdModal" class="hidden absolute inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
@@ -2367,6 +2405,77 @@
       if (modal) modal.classList.add('hidden');
     };
 
+    let passwordRecoveryTargetUser = null;
+
+    window.openForgotPasswordModal = function() {
+      const preEmail = String(document.getElementById('loginEmail')?.value || '').trim();
+      const fEmail = document.getElementById('forgotPwdEmail');
+      const fPhone = document.getElementById('forgotPwdPhone');
+      if (fEmail) fEmail.value = preEmail;
+      if (fPhone) fPhone.value = '';
+      const m = document.getElementById('forgotPwdModal');
+      if (m) m.classList.remove('hidden');
+    };
+
+    window.closeForgotPasswordModal = function() {
+      const m = document.getElementById('forgotPwdModal');
+      if (m) m.classList.add('hidden');
+    };
+
+    window.handleForgotPasswordVerify = async function(e) {
+      e.preventDefault();
+      if (!supabaseClient) {
+        alert("資料庫連線尚未就緒，請稍候重試。");
+        return;
+      }
+      const emailVal = String(document.getElementById('forgotPwdEmail')?.value || '').trim().toLowerCase();
+      const phoneVal = String(document.getElementById('forgotPwdPhone')?.value || '').trim();
+      if (!emailVal || !phoneVal) return;
+
+      const btn = document.getElementById('btnVerifyForgotPwd');
+      if (btn) {
+        btn.innerText = "核對中...";
+        btn.disabled = true;
+      }
+
+      try {
+        const { data, error } = await supabaseClient
+          .from('profiles')
+          .select('*')
+          .ilike('email', emailVal)
+          .maybeSingle();
+
+        if (error) throw error;
+        if (!data) {
+          alert("❌ 查無此帳號，請確認電子信箱是否正確。");
+          return;
+        }
+        if (data.status === 'rejected') {
+          alert("🚫 此帳號已停用，請聯繫系統管理者。");
+          return;
+        }
+        const dbPhone = String(data.phone || '').replace(/\s+/g, '');
+        const inPhone = phoneVal.replace(/\s+/g, '');
+        if (!dbPhone || dbPhone !== inPhone) {
+          alert("❌ 聯絡電話／分機與註冊資料不符，請重新確認或洽系統管理者重設。");
+          return;
+        }
+
+        passwordRecoveryTargetUser = data;
+        window.closeForgotPasswordModal();
+        window.openChangePasswordModal(false);
+        const titleEl = document.getElementById('changePwdModalTitle');
+        if (titleEl) titleEl.innerText = `🔓 重設並變更密碼（${data.name || data.email}）`;
+      } catch (err) {
+        alert("帳號核對失敗：" + err.message);
+      } finally {
+        if (btn) {
+          btn.innerText = "下一步：設定新密碼";
+          btn.disabled = false;
+        }
+      }
+    };
+
     window.handleChangePasswordSubmit = async function(e) {
       e.preventDefault();
       const p1 = document.getElementById('newPasswordInput').value.trim();
@@ -2402,8 +2511,15 @@
       }
 
       try {
-        if (currentUser.id === 'admin-master') {
-          currentUser.password = p1;
+        const targetUser = passwordRecoveryTargetUser || currentUser;
+        if (!targetUser) {
+          alert("請先登入或完成忘記密碼帳號核對。");
+          return;
+        }
+
+        if (targetUser.id === 'admin-master') {
+          targetUser.password = p1;
+          passwordRecoveryTargetUser = null;
           alert("🎉 密碼已更新！");
           isForcedPasswordChange = false;
           const modal = document.getElementById('changePwdModal');
@@ -2414,13 +2530,21 @@
         const { error } = await supabaseClient
           .from('profiles')
           .update({ password: p1 })
-          .eq('id', currentUser.id);
+          .eq('id', targetUser.id);
 
         if (error) throw error;
 
-        currentUser.password = p1;
+        if (currentUser && currentUser.id === targetUser.id) {
+          currentUser.password = p1;
+        }
+        const wasRecovery = Boolean(passwordRecoveryTargetUser);
+        passwordRecoveryTargetUser = null;
         isForcedPasswordChange = false;
-        alert("🎉 密碼變更成功！新密碼已符合企業資安複雜度要求，下次登入請使用新密碼。");
+        alert(
+          wasRecovery
+            ? "🎉 密碼已成功變更！請返回登入畫面使用新密碼登入。"
+            : "🎉 密碼變更成功！新密碼已符合企業資安複雜度要求，下次登入請使用新密碼。"
+        );
         const modal = document.getElementById('changePwdModal');
         if (modal) modal.classList.add('hidden');
       } catch (err) {
