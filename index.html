@@ -2925,6 +2925,19 @@
         }
       }
 
+      // 若目前正在執行逐步故障排除測試（activeGuidance.steps 進行中），且使用者回答不在快捷指令集中：
+      // 保留目前測試步驟進度，將使用者現場回饋納入補充紀錄並重新提示目前步驟（不跳回第 1 步）
+      if (activeGuidance && activeGuidance.sop && Array.isArray(activeGuidance.steps) && activeGuidance.steps.length > 0) {
+        const curStepNum = activeGuidance.currentStepIndex + 1;
+        const totalSteps = activeGuidance.steps.length;
+        const curStepText = activeGuidance.steps[activeGuidance.currentStepIndex] || '';
+        const feedbackMsg = `已記錄您對「第 ${curStepNum}/${totalSteps} 步」的現場回覆：「${q}」。目前仍停留在<b>第 ${curStepNum}/${totalSteps} 步</b>，請確認是否已排除或進入下一步：`;
+        window.appendUserChat('ai', feedbackMsg, true, 'step_action', [], activeGuidance.sop);
+        window.logChatToSupabase('ai', `[步驟 ${curStepNum}/${totalSteps} 回覆紀錄] ${q}`);
+        window.speak(`已記錄您的回覆，目前仍在第${curStepNum}步：${curStepText}。請問問題是否已解決？`, () => window.startListening());
+        return;
+      }
+
       window.updateXiaoweiMood('thinking', `「收到！小威正在檢索知識庫並準備用 Groq AI 找解法...」`);
 
       const isSevereHardware = (q.includes('冒煙') || q.includes('焦味') || q.includes('斷掉') || q.includes('摔壞') || q.includes('燒掉') || q.includes('電池膨脹') || q.includes('直接派工') || q.includes('報修就好'));
