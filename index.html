@@ -1118,6 +1118,90 @@
     </div>
   </div>
 
+  <!-- 5E. SAGE 事件 RCA 根本原因分析與結案 Modal -->
+  <div id="sageRcaModal" class="hidden absolute inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <div class="bg-slate-900 text-slate-100 w-full max-w-2xl rounded-2xl shadow-2xl border border-indigo-500/50 overflow-hidden flex flex-col max-h-[92vh]">
+      <div class="bg-[#10183d] text-white px-5 py-3.5 flex justify-between items-center border-b border-slate-700 shrink-0">
+        <div>
+          <h3 id="sageRcaModalTitle" class="text-sm font-bold text-amber-300">🧾 SAGE 事件 RCA 根本原因分析與結案</h3>
+          <p class="text-[11px] text-sky-200 mt-0.5">填寫事件生命週期、時間軸、根本原因、CAPA 改善措施與 SOP 回流狀態後完成結案</p>
+        </div>
+        <button type="button" onclick="closeSageRcaModal()" class="text-slate-400 hover:text-white text-base">✕</button>
+      </div>
+
+      <form onsubmit="handleSaveSageRcaClosure(event)" class="p-4 space-y-3 overflow-y-auto flex-1 text-xs">
+        <input type="hidden" id="rca_group_key">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label class="block font-bold text-slate-300 mb-1">ITIL 生命週期階段</label>
+            <select id="rca_lifecycle_stage" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-2.5 py-1.5 text-xs text-white">
+              <option value="New">New</option>
+              <option value="Investigating">Investigating</option>
+              <option value="Identified">Identified</option>
+              <option value="Mitigation">Mitigation</option>
+              <option value="Monitoring">Monitoring</option>
+              <option value="Resolved">Resolved</option>
+              <option value="Closed" selected>Closed（正式結案）</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-bold text-slate-300 mb-1">根本原因分類 <span class="text-rose-400">*</span></label>
+            <select id="rca_root_category" required class="w-full bg-slate-800 border border-slate-600 rounded-lg px-2.5 py-1.5 text-xs text-white">
+              <option value="網路／防火牆／DNS">網路／防火牆／DNS</option>
+              <option value="憑證／元件／權限">憑證／元件／權限</option>
+              <option value="軟體／驅動／更新相容">軟體／驅動／更新相容</option>
+              <option value="硬體／週邊／電力">硬體／週邊／電力</option>
+              <option value="流程／SOP／測試缺口">流程／SOP／測試缺口</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-bold text-slate-300 mb-1">SOP 知識庫回流狀態</label>
+            <select id="rca_kb_feedback" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-2.5 py-1.5 text-xs text-white">
+              <option value="未檢核">未檢核</option>
+              <option value="不需新增">不需新增</option>
+              <option value="已建立草稿待審">已建立草稿待審</option>
+              <option value="已更新既有 SOP">已更新既有 SOP</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-300 mb-1">事件時間軸（發生／偵測／通報／緩解／復原） <span class="text-rose-400">*</span></label>
+          <input type="text" id="rca_timeline_summary" required placeholder="例：10:05 發生 → 10:12 偵測 → 10:20 通報 → 10:45 緩解 → 11:00 復原"
+                 class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-xs text-white">
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-300 mb-1">根本原因說明（Root Cause，區別於暫時緩解） <span class="text-rose-400">*</span></label>
+          <textarea id="rca_root_detail" rows="3" required placeholder="說明真正導致故障的技術或流程根因..."
+                    class="w-full bg-slate-800 border border-slate-600 rounded-lg p-2.5 text-xs text-white leading-relaxed"></textarea>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold text-slate-300 mb-1">暫時緩解措施（Workaround）</label>
+            <input type="text" id="rca_workaround" placeholder="例：切換備援線路或改用無痕視窗登入"
+                   class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-xs text-white">
+          </div>
+          <div>
+            <label class="block font-bold text-slate-300 mb-1">矯正與預防措施（CAPA） <span class="text-rose-400">*</span></label>
+            <input type="text" id="rca_capa_actions" required placeholder="例：更新憑證到期提醒與補齊測試檢核表"
+                   class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-xs text-white">
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-700">
+          <button type="button" onclick="closeSageRcaModal()" class="px-4 py-2 border border-slate-600 text-slate-300 rounded-xl hover:bg-slate-800 font-medium">
+            取消
+          </button>
+          <button type="submit" id="btnSaveSageRca" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold shadow">
+            ✅ 儲存 RCA 並完成事件結案
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- 5B. 管理者修改使用者帳號與權限 Modal -->
   <div id="userEditModal" class="hidden absolute inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
     <div class="bg-white text-slate-800 w-full max-w-lg rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
@@ -6210,6 +6294,108 @@ ${extractedText.slice(0, 11000)}`;
       }
     };
 
+    function evaluateSlaBadgeInfo(alertLevel, refTimeStr) {
+      const lv = String(alertLevel || 'P4').toUpperCase();
+      const budgetMin = lv === 'P1' ? 120 : (lv === 'P2' ? 240 : (lv === 'P3' ? 480 : (lv === 'P4' ? 1440 : 2880)));
+      const startMs = new Date(refTimeStr || Date.now()).getTime() || Date.now();
+      const elapsedMin = Math.max(0, Math.round((Date.now() - startMs) / 60000));
+      if (elapsedMin >= budgetMin) {
+        return { label: `SLA 已逾時 (${lv})`, cls: 'bg-rose-950 text-rose-200 border border-rose-500/70' };
+      }
+      if (elapsedMin >= budgetMin * 0.8) {
+        return { label: `SLA 即將逾期 (${lv})`, cls: 'bg-amber-950 text-amber-200 border border-amber-500/70' };
+      }
+      return { label: `SLA 正常 (${lv})`, cls: 'bg-emerald-950/80 text-emerald-200 border border-emerald-500/50' };
+    }
+
+    let sageRcaRecords = new Map();
+
+    window.openSageRcaModal = function(groupId) {
+      const grp = sageGroups.find(g => g.id === groupId);
+      const modal = document.getElementById('sageRcaModal');
+      if (!grp || !modal) return;
+      const existing = sageRcaRecords.get(groupId) || {};
+      document.getElementById('sageRcaModalTitle').innerText = `🧾 事件 RCA 根本原因分析與結案：${grp.topic}（${grp.tenantId || 'DEFAULT_CLIENT'}）`;
+      document.getElementById('rca_group_key').value = grp.id;
+      document.getElementById('rca_lifecycle_stage').value = existing.lifecycle_stage || 'Closed';
+      document.getElementById('rca_root_category').value = existing.root_cause_category || '網路／防火牆／DNS';
+      document.getElementById('rca_kb_feedback').value = existing.kb_feedback_status || '未檢核';
+      document.getElementById('rca_timeline_summary').value = existing.timeline_summary || '';
+      document.getElementById('rca_root_detail').value = existing.root_cause_detail || grp.rootCauseHypothesis || '';
+      document.getElementById('rca_workaround').value = existing.workaround_used || '';
+      document.getElementById('rca_capa_actions').value = existing.capa_actions || '';
+      modal.classList.remove('hidden');
+    };
+
+    window.closeSageRcaModal = function() {
+      const modal = document.getElementById('sageRcaModal');
+      if (modal) modal.classList.add('hidden');
+    };
+
+    window.handleSaveSageRcaClosure = async function(e) {
+      e.preventDefault();
+      const groupKey = String(document.getElementById('rca_group_key')?.value || '').trim();
+      const target = sageGroups.find(g => g.id === groupKey);
+      if (!target) return;
+
+      const rcaPayload = {
+        rca_id: 'RCA-' + String(Date.now()).slice(-6),
+        lifecycle_stage: document.getElementById('rca_lifecycle_stage')?.value || 'Closed',
+        root_cause_category: document.getElementById('rca_root_category')?.value || '',
+        kb_feedback_status: document.getElementById('rca_kb_feedback')?.value || '未檢核',
+        timeline_summary: String(document.getElementById('rca_timeline_summary')?.value || '').trim(),
+        root_cause_detail: String(document.getElementById('rca_root_detail')?.value || '').trim(),
+        workaround_used: String(document.getElementById('rca_workaround')?.value || '').trim(),
+        capa_actions: String(document.getElementById('rca_capa_actions')?.value || '').trim(),
+        closed_by: currentUser?.name || 'Admin',
+        closed_at: new Date().toISOString()
+      };
+
+      const btn = document.getElementById('btnSaveSageRca');
+      if (btn) {
+        btn.innerText = '儲存 RCA 中...';
+        btn.disabled = true;
+      }
+
+      try {
+        if (supabaseClient) {
+          const { error: rcaErr } = await supabaseClient
+            .from('sage_incidents')
+            .upsert([{
+              tenant_id: target.tenantId || 'DEFAULT_CLIENT',
+              group_key: target.id,
+              topic: target.topic,
+              unit: target.unit,
+              status: 'CONFIRMED',
+              alert_level: target.alertLevel || 'P3',
+              lifecycle_stage: rcaPayload.lifecycle_stage,
+              rca_id: rcaPayload.rca_id,
+              timeline_summary: rcaPayload.timeline_summary,
+              root_cause_category: rcaPayload.root_cause_category,
+              root_cause_detail: rcaPayload.root_cause_detail,
+              workaround_used: rcaPayload.workaround_used,
+              capa_actions: rcaPayload.capa_actions,
+              kb_feedback_status: rcaPayload.kb_feedback_status,
+              closed_by: rcaPayload.closed_by,
+              closed_at: rcaPayload.closed_at
+            }], { onConflict: 'tenant_id,group_key' });
+          if (rcaErr) {
+            alert('❌ RCA 寫入失敗，請稍後重試：' + rcaErr.message);
+            return;
+          }
+        }
+        sageRcaRecords.set(groupKey, rcaPayload);
+        target.rcaRecord = rcaPayload;
+        window.closeSageRcaModal();
+        await window.fetchSageIncidentsFromSupabase();
+      } finally {
+        if (btn) {
+          btn.innerText = '✅ 儲存 RCA 並完成事件結案';
+          btn.disabled = false;
+        }
+      }
+    };
+
     function renderSageWorkbench() {
       const q = String(document.getElementById('sageSearchInput')?.value || '').trim().toLowerCase();
       const filtered = sageGroups.filter(g => {
@@ -6309,6 +6495,10 @@ ${extractedText.slice(0, 11000)}`;
                   <div class="text-[11px] text-slate-400 mt-0.5">客戶：${cur.tenantId || 'DEFAULT_CLIENT'} · 涉及單位／位置：${cur.unit}</div>
                 </div>
                 <div class="flex flex-wrap items-center gap-1.5">
+                  <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold ${evaluateSlaBadgeInfo(cur.alertLevel, cur.latestTime).cls}">${evaluateSlaBadgeInfo(cur.alertLevel, cur.latestTime).label}</span>
+                  <button onclick="openSageRcaModal('${cur.id.replace(/'/g, "'")}')" class="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-[11px] font-bold">
+                    🧾 RCA 結案
+                  </button>
                   <button onclick="openSageAuditDetailModal('${cur.id.replace(/'/g, "'")}')" class="px-2.5 py-1 bg-indigo-700 hover:bg-indigo-600 text-white rounded text-[11px] font-bold">
                     🔍 審核明細 (${cur.tickets.length + cur.pendingTickets.length})
                   </button>
