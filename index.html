@@ -817,14 +817,20 @@
               尚未產生通報摘要，請在「事件情報中心」選取群組或點擊上方按鈕產生。
             </div>
 
-            <!-- 案件轉事件自動寄信通知設定（支援直接呼叫 Edge Function / 寄信端點或開啟通知信件草稿視窗） -->
+            <!-- 事件通報與案件轉事件自動 Email 警示設定 -->
             <div class="bg-slate-900/90 border border-indigo-500/40 rounded-xl p-3 space-y-2 text-xs">
               <div class="flex flex-wrap justify-between items-center gap-2">
-                <div class="font-bold text-indigo-300">✉️ 案件轉事件自動 Email 通知設定</div>
-                <label class="flex items-center gap-1.5 text-[11px] text-emerald-300 cursor-pointer">
-                  <input id="sage_auto_mail_enabled" type="checkbox" checked onchange="saveSageMailConfig()">
-                  <span>案件確認轉為事件時自動寄出通知信</span>
-                </label>
+                <div class="font-bold text-indigo-300">✉️ 事件通報 ＆ 案件轉事件自動 Email 警示設定</div>
+                <div class="flex flex-wrap items-center gap-3">
+                  <label class="flex items-center gap-1.5 text-[11px] text-amber-300 cursor-pointer">
+                    <input id="sage_notif_auto_mail_enabled" type="checkbox" checked onchange="saveSageMailConfig()">
+                    <span>新增／觸發事件通報時自動寄出 Email 警示</span>
+                  </label>
+                  <label class="flex items-center gap-1.5 text-[11px] text-emerald-300 cursor-pointer">
+                    <input id="sage_auto_mail_enabled" type="checkbox" checked onchange="saveSageMailConfig()">
+                    <span>案件確認轉為事件時自動寄出通知信</span>
+                  </label>
+                </div>
               </div>
               <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
@@ -5722,6 +5728,8 @@ ${extractedText.slice(0, 11000)}`;
         document.getElementById('ntf_reporting_unavail').checked = false;
       }
       await window.fetchSageIncidentsFromSupabase();
+      const hitGroups = sageGroups.filter(g => (g.matchedNotifications || []).some(n => n.notification_id === nid));
+      await window.notifyEventNotificationByMail(newNtf, hitGroups);
     };
 
     function renderSageNotificationList(list = sageNotifications) {
@@ -6001,6 +6009,7 @@ ${extractedText.slice(0, 11000)}`;
 反向證據檢核：${target.counterEvidence || '無明顯反向證據'}
 建議處置：${target.recommendedAction || '請值班工程師確認受影響範圍與設備／系統狀態，必要時啟動跨單位通報與升級處理。'}`;
       window.switchSageSubTab('notify');
+      window.notifyIncidentTransitionByMail(target, `事件通報摘要警示（Alert ${alertLv}）`);
     };
 
     const SAGE_MAIL_CFG_KEY = 'sage_incident_mail_config_v1';
@@ -6008,14 +6017,24 @@ ${extractedText.slice(0, 11000)}`;
     function getSageMailConfig() {
       try {
         const raw = localStorage.getItem(SAGE_MAIL_CFG_KEY);
-        if (raw) return JSON.parse(raw);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          return {
+            enabled: parsed.enabled !== false,
+            notifEnabled: parsed.notifEnabled !== false,
+            to: parsed.to || '',
+            cc: parsed.cc || '',
+            webhookUrl: parsed.webhookUrl || ''
+          };
+        }
       } catch (_e) {}
-      return { enabled: true, to: '', cc: '', webhookUrl: '' };
+      return { enabled: true, notifEnabled: true, to: '', cc: '', webhookUrl: '' };
     }
 
     window.saveSageMailConfig = function() {
       const cfg = {
         enabled: Boolean(document.getElementById('sage_auto_mail_enabled')?.checked ?? true),
+        notifEnabled: Boolean(document.getElementById('sage_notif_auto_mail_enabled')?.checked ?? true),
         to: String(document.getElementById('sage_mail_recipients')?.value || '').trim(),
         cc: String(document.getElementById('sage_mail_cc')?.value || '').trim(),
         webhookUrl: String(document.getElementById('sage_mail_webhook_url')?.value || '').trim()
@@ -6024,6 +6043,31 @@ ${extractedText.slice(0, 11000)}`;
         localStorage.setItem(SAGE_MAIL_CFG_KEY, JSON.stringify(cfg));
       } catch (_e) {}
       return cfg;
+    };
+
+    window.notifyEventNotificationByMail = async function(ntfObj, matchedGroups = []) {
+      if (!ntfObj) return;
+      const cfg = getSageMailConfig();
+      if (cfg.notifEnabled === false) return;
+
+      const isSevere = ntfObj.severity === 'severe' || ntfObj.reporting_unavailable === true || ntfObj.dispatch_type === '資安';
+      const alertLv = isSevere ? 'P1 嚴重警示' : 'P2/P3 事件通報警示';
+      const groupKeys = (matchedGroups || []).map(g => `${g.topic}（${g.unit}｜報修 ${g.tickets?.length || 0} 筆）`).join('；') || '全區主動預警通報';
+
+      const syntheticGrp = {
+        id: ntfObj.notification_id || 'NTF-ALERT',
+        tenantId: ntfObj.tenant_id || (sageSelectedClient !== 'ALL' ? sageSelectedClient : 'DEFAULT_CLIENT'),
+        topic: `${ntfObj.dispatch_type || '事件通報'}：${ntfObj.problem_description}`,
+        unit: `${ntfObj.company_plant || '全部廠區'} / ${ntfObj.device_model || '所有系統'}`,
+        alertLevel: isSevere ? 'P1' : 'P2',
+        ruleCode: ntfObj.dispatch_type === '資安' ? 'C13' : (ntfObj.reporting_unavailable ? 'C16' : 'C1'),
+        state: 'EVENT_NOTIFICATION_ALERT',
+        tickets: (matchedGroups || []).flatMap(g => g.tickets || []),
+        chats: (matchedGroups || []).flatMap(g => g.chats || []),
+        rootCauseHypothesis: `通報範圍：${ntfObj.company_plant || '全部廠區'}｜受影響系統：${ntfObj.device_model || '所有系統'}｜關聯事件群組：${groupKeys}`
+      };
+
+      await window.notifyIncidentTransitionByMail(syntheticGrp, `事件通報自動 Mail 警示（${alertLv}）`);
     };
 
     function collectRelatedEmailsForGroup(grp, profileRows = []) {
