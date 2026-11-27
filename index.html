@@ -5145,9 +5145,6 @@ ${extractedText.slice(0, 11000)}`;
       sageSelectedClient = String(clientVal || 'ALL');
       sageSelectedGroupId = null;
       await window.fetchSageIncidentsFromSupabase();
-      if (target) {
-        await window.notifyIncidentTransitionByMail(target, '事件確認（CONFIRMED）');
-      }
     };
 
     window.switchSageSubTab = function(subTab) {
