@@ -1456,9 +1456,9 @@
             ? data.steps.map(s => String(s || '').trim()).filter(Boolean)
             : [];
           const rawAns = data?.answer ? String(data.answer).trim() : '';
-          const groundedIds = Array.isArray(data?.grounded_sop_ids) && data.grounded_sop_ids.length > 0
+          const groundedIds = Array.isArray(data?.grounded_sop_ids)
             ? data.grounded_sop_ids.map(String).filter(Boolean)
-            : (data?.matched_sop_id && data.matched_sop_id !== 'NO_MATCH' ? [String(data.matched_sop_id)] : candidateSopIds);
+            : (data?.matched_sop_id && data.matched_sop_id !== 'NO_MATCH' ? [String(data.matched_sop_id)] : []);
           const isNoMatch = data?.match_status === 'NO_MATCH' || rawAns === 'NO_MATCH' || groundedIds.length === 0;
 
           if (isNoMatch) {
@@ -2097,6 +2097,7 @@
       categoryType: 'GENERAL',
       matchedSop: null,
       retrievedCandidates: [],
+      actualQuotedSopIds: [],
       suggestedSteps: [],
       userAttempts: [],
       deviceOrSystem: '',
@@ -2915,23 +2916,16 @@
       const q = String(queryText || '').toLowerCase().trim();
       if (!q) return false;
 
-      // 明確資訊設備關鍵字白名單（電腦含週邊、印表機、讀卡機、條碼機、標籤列印機、網路/HIS等）
-      const itKeywords = [
-        '電腦', '主機', '桌機', '筆電', '螢幕', '鍵盤', '滑鼠', '週邊', '周邊', 'usb', '隨身碟', '耳機', '麥克風',
-        '印表機', '出紙', '卡紙', '碳粉', '墨水', '列印', '讀卡機', '卡機', '健保卡', '醫事卡', '晶片卡',
+      // 明確限制：僅對電腦、螢幕、鍵盤、滑鼠、印表機、讀卡機、條碼機、標籤列印機、系統等資訊設備及系統進行排除引導
+      const allowedItKeywords = [
+        '電腦', '主機', '桌機', '筆電', 'nb', 'pc', '螢幕', '顯示器', '黑屏', '無畫面', '鍵盤', '滑鼠', '週邊', '周邊', 'usb',
+        '印表機', '出紙', '卡紙', '碳粉', '墨水', '列印', '讀卡機', '卡機', '健保卡', '醫事卡', '晶片卡', '插卡',
         '條碼機', '條碼', '斑馬機', '標籤機', '標籤列印機', '標籤', '貼紙',
-        '網路', 'wifi', 'wi-fi', 'vpn', 'ip', 'dns', 'dhcp', '網點', '網路線', 'his', '系統', '帳號', '密碼', '登入', '當機', '藍屏', 'bsod', '開機', '重灌', '軟體', '驅動'
+        '系統', 'his', 'vpn', '網路', 'wifi', 'wi-fi', 'ip', 'dns', 'dhcp', '網點', '網路線',
+        '帳號', '密碼', '登入', '當機', '藍屏', 'bsod', '開機', '重灌', '軟體', '驅動', '憑證', 'hicos'
       ];
-      if (itKeywords.some(k => q.includes(k))) return false;
-
-      // 常見非資訊設備／設施清單
-      const nonItKeywords = [
-        '冷氣', '空調', '冰箱', '微波爐', '飲水機', '熱水瓶', '咖啡機', '電鍋', '烤箱', '電磁爐',
-        '電燈', '燈管', '照明', '插座', '配電盤', '電梯', '門禁', '監視器', '監控', '廣播', '電話', '分機', '傳真機',
-        '病床', '輪椅', '點滴', '血壓計', '心電圖', '超音波', 'x光', 'ct', 'mri', '麻醉機', '呼吸器', '洗腎',
-        '洗手間', '廁所', '馬桶', '水龍頭', '漏水', '水管', '天花板', '地板', '桌椅', '窗簾', '門鎖', '停車', '垃圾'
-      ];
-      return nonItKeywords.some(k => q.includes(k));
+      // 只要不包含上述允許之資訊設備或系統關鍵字，一律判定為非資訊相關設備，不提供故障排除引導
+      return !allowedItKeywords.some(k => q.includes(k));
     }
 
     window.handleUserSend = async function() {
@@ -2944,7 +2938,7 @@
       if (handleVoiceStepShortcut(q)) return;
 
       if (isNonItEquipmentQuery(q)) {
-        const nonItReply = "此項目屬於非資訊相關設備，小威僅提供電腦（含週邊）、印表機、讀卡機、條碼機、標籤列印機等資訊設備之故障排除引導，非資訊設備無法提供服務。";
+        const nonItReply = "此項目屬於非資訊相關設備，小威僅提供電腦、螢幕、鍵盤、滑鼠、印表機、讀卡機、條碼機、標籤列印機、系統等資訊設備及系統之故障排除引導，非資訊設備無法提供服務。";
         window.appendUserChat('user', q);
         window.logChatToSupabase('user', q);
         window.updateXiaoweiMood('idle', '「此項目屬於非資訊相關設備，小威無法提供服務喔。」');
@@ -3497,9 +3491,9 @@ ${stepsText}
       const assignedDept = inquiryContext.matchedSop?.escalate_dept || '資訊服務處';
 
       const traceId = `TRC-${currentSessionId}-${sId}`;
-      const groundedIds = Array.isArray(inquiryContext.retrievedCandidates) && inquiryContext.retrievedCandidates.length > 0
-        ? inquiryContext.retrievedCandidates.map(m => m?.item?.sop_id).filter(Boolean)
-        : (inquiryContext.matchedSop?.sop_id && !['NO_MATCH', 'GROQ-SYMPTOM', 'GROQ-IMG', 'GROQ-DEEP'].includes(inquiryContext.matchedSop.sop_id) ? [inquiryContext.matchedSop.sop_id] : []);
+      const groundedIds = Array.isArray(inquiryContext.actualQuotedSopIds) && inquiryContext.actualQuotedSopIds.length > 0
+        ? inquiryContext.actualQuotedSopIds.map(String).filter(Boolean)
+        : (inquiryContext.matchedSop?.sop_id && !['NO_MATCH', 'GROQ-SYMPTOM', 'GROQ-IMG', 'GROQ-DEEP', 'GENERAL-FALLBACK'].includes(String(inquiryContext.matchedSop.sop_id)) ? [String(inquiryContext.matchedSop.sop_id)] : []);
       const normTicketCompany = normalizeCompanyName(document.getElementById('simple_company').value) || 'DEFAULT_CLIENT';
       const ticketPayload = {
         service_id: sId,
@@ -5192,8 +5186,12 @@ ${extractedText.slice(0, 11000)}`;
         const unit = t.company_plant || t.location || '未標示單位';
         const errCodePart = String(t.error_code || '').trim().toUpperCase() || 'NOERR';
         const kwPart = Array.isArray(t.keywords) && t.keywords[0] ? String(t.keywords[0]).trim() : (t.device_model || 'GENERAL');
+        const tMs = new Date(t.created_at || t.call_time || Date.now()).getTime() || Date.now();
+        const { t3 } = getSageRuleThresholds();
+        const winMs = Math.max(1, t3) * 60 * 1000;
+        const winBucket = String(Math.floor(tMs / winMs));
         const bucketSuffix = sig.hasRecovery ? `${unit}__已恢復` : (sig.isGenericOnly ? `${unit}__待確認` : unit);
-        const key = `${tenant}__${topic}__${errCodePart}__${kwPart}__${bucketSuffix}`;
+        const key = `${tenant}__${topic}__${errCodePart}__${kwPart}__${bucketSuffix}__W${winBucket}`;
 
         if (!clusterMap.has(key)) {
           clusterMap.set(key, {
@@ -5248,20 +5246,19 @@ ${extractedText.slice(0, 11000)}`;
         const tenant = resolveRowTenantId(c);
         const topic = classifySageTopic(content);
         const unit = c.company ? `${c.company}${c.jurisdiction ? ` (${c.jurisdiction})` : ''}` : (c.jurisdiction || '一般單位');
-        const timeBucket = String(c.created_at || '').slice(0, 10) || 'TODAY';
-        const exactKey = `${tenant}__${topic}__${unit}__${timeBucket}`;
-        let matchedKey = clusterMap.has(exactKey) ? exactKey : null;
-        if (!matchedKey) {
-          for (const [k, grp] of clusterMap.entries()) {
-            const grpDay = String(grp.latestTime || '').slice(0, 10) || 'TODAY';
-            if (grp.tenantId === tenant && grp.topic === topic && grp.unit === unit && grpDay === timeBucket && !k.endsWith('__已恢復') && !k.endsWith('__待確認')) {
-              matchedKey = k;
-              break;
-            }
+        const cMs = new Date(c.created_at || Date.now()).getTime() || Date.now();
+        const { t3: chatWinMin } = getSageRuleThresholds();
+        const chatWinMs = Math.max(1, chatWinMin) * 60 * 1000;
+        const winBucket = String(Math.floor(cMs / chatWinMs));
+        let matchedKey = null;
+        for (const [k, grp] of clusterMap.entries()) {
+          if (grp.tenantId === tenant && grp.topic === topic && grp.unit === unit && k.endsWith(`__W${winBucket}`) && !k.includes('__已恢復') && !k.includes('__待確認')) {
+            matchedKey = k;
+            break;
           }
         }
         if (!matchedKey) {
-          matchedKey = `${tenant}__${topic}__${unit}`;
+          matchedKey = `${tenant}__${topic}__${unit}__CHAT__W${winBucket}`;
           clusterMap.set(matchedKey, {
             id: matchedKey,
             tenantId: tenant,
@@ -5561,16 +5558,24 @@ ${extractedText.slice(0, 11000)}`;
         if (tkRes.error) readErrors.push(`報修表(tickets): ${tkRes.error.message}`);
         if (chRes.error) readErrors.push(`對話表(chat_logs): ${chRes.error.message}`);
         if (incRes.error) readErrors.push(`事件表(sage_incidents): ${incRes.error.message}`);
+        if (ntfRes.error) readErrors.push(`通報表(event_notifications): ${ntfRes.error.message}`);
         const pRows = (!profRes.error && Array.isArray(profRes.data)) ? profRes.data : [];
         const tRows = (!tkRes.error && Array.isArray(tkRes.data)) ? tkRes.data : [];
         const cRows = (!chRes.error && Array.isArray(chRes.data)) ? chRes.data : [];
         const iRows = (!incRes.error && Array.isArray(incRes.data)) ? incRes.data : [];
         const nRows = (!ntfRes.error && Array.isArray(ntfRes.data)) ? ntfRes.data : [];
         if (readErrors.length > 0) {
+          const errBannerHtml = `<div id="sageReadErrorBanner" class="p-3 bg-rose-950/80 border border-rose-500/70 rounded-xl text-rose-200 text-xs">⚠️ 資料讀取不完整／失敗（部分結果）：<br>${readErrors.join('<br>')}</div>`;
+          const sageTop = document.getElementById('tabSage');
+          if (sageTop && !document.getElementById('sageReadErrorBanner')) {
+            sageTop.insertAdjacentHTML('afterbegin', errBannerHtml);
+          }
           const detailPanel = document.getElementById('sageGroupDetailPanel');
           if (detailPanel) {
-            detailPanel.innerHTML = `<div class="p-3 bg-rose-950/70 border border-rose-500/60 rounded-xl text-rose-200 text-xs">⚠️ 資料表讀取失敗（非「無事件」）：<br>${readErrors.join('<br>')}</div>`;
+            detailPanel.innerHTML = errBannerHtml;
           }
+        } else {
+          document.getElementById('sageReadErrorBanner')?.remove();
         }
         sageNotifications = nRows;
         populateSageClientSelector(pRows, tRows, cRows, iRows);
@@ -5775,7 +5780,7 @@ ${extractedText.slice(0, 11000)}`;
       const alertVal = target?.alertLevel || 'P3';
       if (supabaseClient && target) {
         try {
-          await supabaseClient.from('sage_incidents').upsert([{
+          const { error: upErr } = await supabaseClient.from('sage_incidents').upsert([{
             tenant_id: target.tenantId || (sageSelectedClient !== 'ALL' ? sageSelectedClient : 'DEFAULT_CLIENT'),
             group_key: target.id,
             topic: target.topic,
