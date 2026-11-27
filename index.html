@@ -2931,6 +2931,17 @@
         }
       }
 
+      const isEngineerRole = currentUser && currentUser.role === 'engineer';
+      if (!isEngineerRole && turnCount >= MAX_TURNS) {
+        inquiryContext.unresolvedReason = `已達追問上限（${MAX_TURNS} 輪）仍未排除，轉由報修流程處理`;
+        window.updateXiaoweiMood('ticket', '「已達 5 輪排查上限，小威已為您整理好報修表單！」');
+        const limitMsg = `本次排查已達 <b>${MAX_TURNS} 輪上限</b>，為避免耽誤您的作業，小威已將目前對話與排查紀錄帶入【報修確認表單】，請檢閱並送出！`;
+        window.appendUserChat('ai', limitMsg, false);
+        window.logChatToSupabase('ai', limitMsg);
+        setTimeout(() => openTicketModalPreview(), 350);
+        return;
+      }
+
       // 若目前正在執行逐步故障排除測試（activeGuidance.steps 進行中），且使用者回答不在快捷指令集中：
       // 保留目前測試步驟進度，將使用者現場回饋納入補充紀錄並重新提示目前步驟（不跳回第 1 步）
       if (activeGuidance && activeGuidance.sop && Array.isArray(activeGuidance.steps) && activeGuidance.steps.length > 0) {
@@ -3388,9 +3399,12 @@ ${stepsText}
       if (modal) modal.classList.add('hidden');
     };
 
+    let isSubmittingTicket = false;
+
     window.confirmSubmitTicket = async function() {
+      if (isSubmittingTicket) return;
       if (!supabaseClient) {
-        alert("資料庫連線尚未就緒。");
+        alert("資料庫連線尚未就緒，報修資料已保留於表單中，請稍候重試。");
         return;
       }
 
@@ -3408,6 +3422,7 @@ ${stepsText}
         return;
       }
 
+      isSubmittingTicket = true;
       const confirmBtn = document.getElementById('btnConfirmTicket');
       if (confirmBtn) {
         confirmBtn.innerText = "寫入報修案件中...";
@@ -3480,6 +3495,7 @@ ${stepsText}
         console.error("建單錯誤:", err);
         alert("工單寫入 Supabase 失敗：" + err.message);
       } finally {
+        isSubmittingTicket = false;
         if (confirmBtn) {
           confirmBtn.innerText = "✅ 確認送出並建立案件";
           confirmBtn.disabled = false;
