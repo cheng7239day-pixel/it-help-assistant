@@ -855,6 +855,25 @@
               <div id="sageMailDispatchStatus" class="text-[11px] text-slate-400">
                 狀態：待命（當案件轉為事件時，將自動彙整事件資訊與關聯人員信箱發送或開啟通知信）。
               </div>
+              <div class="pt-2 border-t border-slate-800 overflow-x-auto">
+                <div class="text-[11px] font-bold text-amber-300 mb-1.5">📣 通知分流政策表（Notification Policy・支援 ITIL 事件生命週期 New → Investigating → Identified → Mitigation → Monitoring → Resolved → Closed）</div>
+                <table class="w-full text-left border-collapse text-[11px]">
+                  <thead class="bg-slate-800 text-slate-300">
+                    <tr>
+                      <th class="p-1.5">Alert 等級</th>
+                      <th class="p-1.5">通知管道分流</th>
+                      <th class="p-1.5">適用情境</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-800 text-slate-200">
+                    <tr><td class="p-1.5 font-mono font-bold text-rose-300">P1</td><td class="p-1.5">Email + Teams + 簡訊</td><td class="p-1.5">重大事件／嚴重資安／多院區或核心系統中斷</td></tr>
+                    <tr><td class="p-1.5 font-mono font-bold text-amber-300">P2</td><td class="p-1.5">Email</td><td class="p-1.5">高優先事件通報或跨單位異常</td></tr>
+                    <tr><td class="p-1.5 font-mono font-bold text-sky-300">P3</td><td class="p-1.5">Email Daily Report</td><td class="p-1.5">一般重複案件與每日事件彙整</td></tr>
+                    <tr><td class="p-1.5 font-mono font-bold text-indigo-300">P4</td><td class="p-1.5">儀表板</td><td class="p-1.5">持續觀察或低量級事件追蹤</td></tr>
+                    <tr><td class="p-1.5 font-mono font-bold text-slate-400">P5</td><td class="p-1.5">不通知</td><td class="p-1.5">單一低風險個案或觀察紀錄</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
 
@@ -2066,8 +2085,11 @@
     let activeGuidance = {
       sop: null,
       steps: [],
-      currentStepIndex: 0
+      currentStepIndex: 0,
+      stepStartTime: 0
     };
+
+    let selectedCmdbAsset = null;
 
     let inquiryContext = {
       originalProblem: '',
@@ -2078,6 +2100,11 @@
       suggestedSteps: [],
       userAttempts: [],
       deviceOrSystem: '',
+      assetCode: '',
+      deviceIp: '',
+      deviceSn: '',
+      warrantyStatus: '',
+      vendorName: '威策電腦',
       impactScope: '個人/單機',
       isMajorIncident: false,
       location: '',
@@ -3223,6 +3250,7 @@
       const total = steps.length;
       const stepContent = steps[currentStepIndex];
 
+      activeGuidance.stepStartTime = Date.now();
       inquiryContext.suggestedSteps.push(`[${sop.sop_id}] 步驟 ${currentStepIndex + 1}: ${stepContent}`);
 
       window.updateXiaoweiMood('step', `「請測試第 ${currentStepIndex + 1}/${total} 步：${stepContent.substring(0, 18)}...」`);
@@ -3252,6 +3280,15 @@
         }
         activeGuidance = { sop: null, steps: [], currentStepIndex: 0 };
       } else {
+        const elapsedSec = activeGuidance.stepStartTime ? Math.round((Date.now() - activeGuidance.stepStartTime) / 1000) : 999;
+        if (elapsedSec < 15 && !activeGuidance._bypassShortTimer) {
+          activeGuidance._bypassShortTimer = true;
+          const warnMsg = `⏱️ 目前執行此步驟僅經過 <b>${elapsedSec} 秒</b>（未滿 15 秒）。看起來您可能尚未完成此步驟，若確認要進入下一步，請再點一次「❌ 未排除，下一條測試」或說「下一步」。`;
+          window.appendUserChat('ai', warnMsg, true, 'step_action', [], activeGuidance.sop);
+          window.logChatToSupabase('ai', `[短時提醒 ${elapsedSec}s] ${warnMsg}`);
+          return;
+        }
+        activeGuidance._bypassShortTimer = false;
         activeGuidance.currentStepIndex++;
 
         if (activeGuidance.currentStepIndex < activeGuidance.steps.length) {
@@ -3484,7 +3521,11 @@ ${stepsText}
         email: document.getElementById('simple_email').value,
         address: locationVal,
         device_model: inquiryContext.deviceOrSystem || (inquiryContext.matchedSop ? inquiryContext.matchedSop.title : '一般主機'),
-        device_sn: "",
+        asset_code: inquiryContext.assetCode || (selectedCmdbAsset?.asset_code || ''),
+        device_ip: inquiryContext.deviceIp || (selectedCmdbAsset?.device_ip || ''),
+        warranty_status: inquiryContext.warrantyStatus || (selectedCmdbAsset?.warranty_status || '保固檢核中'),
+        vendor_name: inquiryContext.vendorName || (selectedCmdbAsset?.vendor_name || '威策電腦'),
+        device_sn: inquiryContext.deviceSn || (selectedCmdbAsset?.device_sn || ''),
         call_time: document.getElementById('simple_call_time').value,
         problem_description: document.getElementById('simple_problem').value,
         solution: "",
@@ -5149,8 +5190,10 @@ ${extractedText.slice(0, 11000)}`;
         const topic = classifySageTopic(desc);
         const sig = inspectEvidenceSignals(t.problem_description || '');
         const unit = t.company_plant || t.location || '未標示單位';
+        const errCodePart = String(t.error_code || '').trim().toUpperCase() || 'NOERR';
+        const kwPart = Array.isArray(t.keywords) && t.keywords[0] ? String(t.keywords[0]).trim() : (t.device_model || 'GENERAL');
         const bucketSuffix = sig.hasRecovery ? `${unit}__已恢復` : (sig.isGenericOnly ? `${unit}__待確認` : unit);
-        const key = `${tenant}__${topic}__${bucketSuffix}`;
+        const key = `${tenant}__${topic}__${errCodePart}__${kwPart}__${bucketSuffix}`;
 
         if (!clusterMap.has(key)) {
           clusterMap.set(key, {
