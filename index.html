@@ -2899,6 +2899,29 @@
       return false;
     }
 
+    function isNonItEquipmentQuery(queryText) {
+      const q = String(queryText || '').toLowerCase().trim();
+      if (!q) return false;
+
+      // 明確資訊設備關鍵字白名單（電腦含週邊、印表機、讀卡機、條碼機、標籤列印機、網路/HIS等）
+      const itKeywords = [
+        '電腦', '主機', '桌機', '筆電', '螢幕', '鍵盤', '滑鼠', '週邊', '周邊', 'usb', '隨身碟', '耳機', '麥克風',
+        '印表機', '出紙', '卡紙', '碳粉', '墨水', '列印', '讀卡機', '卡機', '健保卡', '醫事卡', '晶片卡',
+        '條碼機', '條碼', '斑馬機', '標籤機', '標籤列印機', '標籤', '貼紙',
+        '網路', 'wifi', 'wi-fi', 'vpn', 'ip', 'dns', 'dhcp', '網點', '網路線', 'his', '系統', '帳號', '密碼', '登入', '當機', '藍屏', 'bsod', '開機', '重灌', '軟體', '驅動'
+      ];
+      if (itKeywords.some(k => q.includes(k))) return false;
+
+      // 常見非資訊設備／設施清單
+      const nonItKeywords = [
+        '冷氣', '空調', '冰箱', '微波爐', '飲水機', '熱水瓶', '咖啡機', '電鍋', '烤箱', '電磁爐',
+        '電燈', '燈管', '照明', '插座', '配電盤', '電梯', '門禁', '監視器', '監控', '廣播', '電話', '分機', '傳真機',
+        '病床', '輪椅', '點滴', '血壓計', '心電圖', '超音波', 'x光', 'ct', 'mri', '麻醉機', '呼吸器', '洗腎',
+        '洗手間', '廁所', '馬桶', '水龍頭', '漏水', '水管', '天花板', '地板', '桌椅', '窗簾', '門鎖', '停車', '垃圾'
+      ];
+      return nonItKeywords.some(k => q.includes(k));
+    }
+
     window.handleUserSend = async function() {
       const input = document.getElementById('userMsgInput');
       if (!input) return;
@@ -2907,6 +2930,17 @@
       input.value = '';
 
       if (handleVoiceStepShortcut(q)) return;
+
+      if (isNonItEquipmentQuery(q)) {
+        const nonItReply = "此項目屬於非資訊相關設備，小威僅提供電腦（含週邊）、印表機、讀卡機、條碼機、標籤列印機等資訊設備之故障排除引導，非資訊設備無法提供服務。";
+        window.appendUserChat('user', q);
+        window.logChatToSupabase('user', q);
+        window.updateXiaoweiMood('idle', '「此項目屬於非資訊相關設備，小威無法提供服務喔。」');
+        window.appendUserChat('ai', nonItReply, false);
+        window.logChatToSupabase('ai', `[非資訊設備拒答] ${nonItReply}`);
+        window.speak(nonItReply);
+        return;
+      }
 
       window.appendUserChat('user', q);
       window.logChatToSupabase('user', q);
