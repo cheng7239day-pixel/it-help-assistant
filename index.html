@@ -525,6 +525,9 @@
               <button onclick="document.getElementById('kbBatchFileInput').click()" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white rounded font-bold shadow flex items-center gap-1.5 text-xs">
                 <span>📂</span> 匯入 SOP (PDF / Word / PPT / Excel / JSON)
               </button>
+              <button onclick="approveAllDraftSopInSupabase()" id="btnApproveAllSop" class="px-3 py-1 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white rounded font-bold shadow text-xs">
+                ✅ 全部改為已審核
+              </button>
               <button onclick="openEditSopModal(null)" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded font-bold shadow text-xs">
                 + 新增單筆 SOP
               </button>
@@ -3998,6 +4001,52 @@ ${stepsText}
       }
     };
 
+    window.approveAllDraftSopInSupabase = async function() {
+      if (!supabaseClient) {
+        alert("資料庫連線尚未就緒，請稍候重試。");
+        return;
+      }
+      const targets = (knowledgeBase || []).filter(k => k && k.sop_id && k.status !== '已審核');
+      if (targets.length === 0) {
+        alert("目前知識庫條目已全部為「已審核」狀態！");
+        return;
+      }
+      if (!confirm(`確定要將目前 ${targets.length} 筆非「已審核」之 SOP 狀態全部更新為「已審核」嗎？`)) {
+        return;
+      }
+      const btn = document.getElementById('btnApproveAllSop');
+      if (btn) {
+        btn.innerText = "批次更新中...";
+        btn.disabled = true;
+      }
+      try {
+        const nowStr = new Date().toISOString().slice(0, 10);
+        const reviewerName = currentUser?.name || '系統管理員';
+        const chunkSize = 50;
+        for (let i = 0; i < targets.length; i += chunkSize) {
+          const chunk = targets.slice(i, i + chunkSize).map(k => ({
+            ...k,
+            status: '已審核',
+            reviewer: k.reviewer || reviewerName,
+            last_review_date: k.last_review_date || nowStr
+          }));
+          const { error } = await supabaseClient
+            .from('kb_solutions')
+            .upsert(chunk, { onConflict: 'sop_id' });
+          if (error) throw error;
+        }
+        alert(`🎉 已將 ${targets.length} 筆 SOP 狀態更新為「已審核」！`);
+        await window.fetchKbFromSupabase();
+      } catch (err) {
+        alert("❌ 批次更新失敗：" + err.message);
+      } finally {
+        if (btn) {
+          btn.innerText = "✅ 全部改為已審核";
+          btn.disabled = false;
+        }
+      }
+    };
+
     window.openEditSopModal = function(sopId = null, prefillKeyword = null) {
       const modal = document.getElementById('sopEditModal');
       const titleElem = document.getElementById('sopEditModalTitle');
@@ -4291,7 +4340,7 @@ ${stepsText}
       const defaultAudience = isAdmin
         ? '使用者'
         : (document.getElementById('engDocAudienceSelect')?.value || '資訊室');
-      const defaultStatus = isAdmin ? '已審核' : '草稿待審';
+      const defaultStatus = '已審核';
 
       try {
         const res = await fetchWithTimeout(EDGE_GATEWAY_URL, {
@@ -4608,8 +4657,7 @@ ${extractedText.slice(0, 11000)}`;
 
             const sopId = String(sopIdRaw || `KB-${i + 1}`).trim();
             const title = String(titleRaw || '未命名問題').trim();
-            const rawStatus = String(getVal(r, ['狀態', 'status']) || '草稿待審').trim();
-            const status = isAdmin ? rawStatus : '草稿待審';
+            const status = '已審核';
             const targetAudience = String(getVal(r, ['適用對象', 'target_audience']) || '使用者').trim();
 
             const mainCat = getVal(r, ['大類', 'main_category', 'category', '分類']) || '';
