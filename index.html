@@ -1474,7 +1474,7 @@
 
     // 前端不存放任何 Groq API Key，統一經由 Supabase Edge Function (GROQ_API_KEY 伺服器端 Secret) 呼叫
 
-    async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+    async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
@@ -3399,9 +3399,9 @@
         activeGuidance = { sop: null, steps: [], currentStepIndex: 0 };
       } else {
         const elapsedSec = activeGuidance.stepStartTime ? Math.round((Date.now() - activeGuidance.stepStartTime) / 1000) : 999;
-        if (elapsedSec < 15 && !activeGuidance._bypassShortTimer) {
+        if (elapsedSec < 5 && !activeGuidance._bypassShortTimer) {
           activeGuidance._bypassShortTimer = true;
-          const warnMsg = `⏱️ 目前執行此步驟僅經過 <b>${elapsedSec} 秒</b>（未滿 15 秒）。看起來您可能尚未完成此步驟，若確認要進入下一步，請再點一次「❌ 未排除，下一條測試」或說「下一步」。`;
+          const warnMsg = `⏱️ 目前執行此步驟僅經過 <b>${elapsedSec} 秒</b>（未滿 5 秒）。看起來您可能尚未完成此步驟，若確認要進入下一步，請再點一次「❌ 未排除，下一條測試」或說「下一步」。`;
           window.appendUserChat('ai', warnMsg, true, 'step_action', [], activeGuidance.sop);
           window.logChatToSupabase('ai', `[短時提醒 ${elapsedSec}s] ${warnMsg}`);
           return;
@@ -4084,7 +4084,7 @@ ${stepsText}
       }
     };
 
-    window.openEditSopModal = function(sopId = null, prefillKeyword = null) {
+    window.openEditSopModal = function(sopId = null, prefillKeyword = null, llmPrefill = null) {
       const modal = document.getElementById('sopEditModal');
       const titleElem = document.getElementById('sopEditModalTitle');
       const idInput = document.getElementById('edit_sop_id');
@@ -4121,12 +4121,15 @@ ${stepsText}
         const isEngineerNew = currentUser && currentUser.role === 'engineer';
         const approvedOptNew = statusSelectNew ? Array.from(statusSelectNew.options).find(o => o.value === '已審核') : null;
         if (approvedOptNew) approvedOptNew.disabled = Boolean(isEngineerNew);
-        document.getElementById('edit_sop_category').value = '基礎電腦-一般問題';
+        const kwSeed = (llmPrefill && llmPrefill.keyword) || prefillKeyword || '';
+        document.getElementById('edit_sop_category').value = (llmPrefill && llmPrefill.category) || '基礎電腦-一般問題';
         document.getElementById('edit_sop_status').value = isEngineerNew ? '草稿待審' : '已審核';
-        document.getElementById('edit_sop_title').value = prefillKeyword ? `針對「${prefillKeyword}」之處理 SOP` : '';
-        document.getElementById('edit_sop_keywords').value = prefillKeyword || '';
-        document.getElementById('edit_sop_followup').value = '';
-        document.getElementById('edit_sop_steps').value = '1. \n2. \n3. ';
+        document.getElementById('edit_sop_title').value = (llmPrefill && llmPrefill.title)
+          ? llmPrefill.title
+          : (kwSeed ? `針對「${kwSeed}」之處理 SOP` : '');
+        document.getElementById('edit_sop_keywords').value = kwSeed;
+        document.getElementById('edit_sop_followup').value = (llmPrefill && llmPrefill.followup) || '';
+        document.getElementById('edit_sop_steps').value = (llmPrefill && llmPrefill.steps) || '1. \n2. \n3. ';
         document.getElementById('edit_sop_audience').value = '使用者';
         document.getElementById('edit_sop_urgency').value = 'P2';
         document.getElementById('edit_sop_self_resolve').value = 'true';
@@ -4928,28 +4931,53 @@ ${extractedText.slice(0, 11000)}`;
               : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-900/70 text-amber-200 border border-amber-500/50">💬 排查進行中</span>`);
 
           const cleanSteps = [];
+          const llmGuidanceSteps = [];
           let resolvedSummary = '';
+          let isLlmNoMatchSession = false;
+
           aiMsgs.forEach(m => {
             const txt = String(m.message_content || '').trim();
             if (!txt || txt === '收到，已記錄未能排除。我們嘗試進行下一項測試：') return;
+            if (txt.includes('已轉換為') && txt.includes('LLM')) {
+              isLlmNoMatchSession = true;
+            }
             if (txt.startsWith('[自解成功]')) {
               resolvedSummary = txt.replace(/^\[自解成功\](\[SOP:[^\]]+\])?\s*/, '');
             } else {
               cleanSteps.push({ time: m.created_at, text: txt });
+              const stepMatch = txt.match(/^測試步驟\s*\[[^\]]+\]\s*\([^)]+\)[：:]\s*(.+)$/);
+              if (stepMatch && stepMatch[1]) {
+                llmGuidanceSteps.push(stepMatch[1].trim());
+              }
             }
           });
 
-          const escapedQ = primaryQuestion.replace(/'/g, "\'").replace(/"/g, '&quot;');
+          const llmDraftObj = {
+            keyword: primaryQuestion,
+            title: isLlmNoMatchSession
+              ? `LLM 排查引導：${primaryQuestion.slice(0, 28)}`
+              : `針對「${primaryQuestion}」之處理 SOP`,
+            category: isLlmNoMatchSession ? 'LLM排查引導-軟體與系統' : '基礎電腦-一般問題',
+            followup: isLlmNoMatchSession
+              ? `請確認「${primaryQuestion}」發生的設備／作業系統版本、錯誤提示文字，以及是否已完成下列 LLM 排查步驟？`
+              : '',
+            steps: llmGuidanceSteps.length > 0
+              ? llmGuidanceSteps.map((s, i) => `${i + 1}. ${s}`).join('\n')
+              : '1. \n2. \n3. '
+          };
+
+          const escapedQ = primaryQuestion.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+          const escapedDraftJson = JSON.stringify(llmDraftObj).replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
           const cardId = `chat-sess-detail-${idx}`;
 
           const learnBarHtml = primaryQuestion && !primaryQuestion.startsWith('[')
             ? `<div class="mt-2 pt-2 border-t border-slate-700/80 flex flex-wrap items-center justify-between gap-2">
-                 <span class="text-[10px] text-indigo-300">💡 知識自主學習沉澱：</span>
+                 <span class="text-[10px] text-indigo-300">💡 知識自主學習沉澱${isLlmNoMatchSession ? '（含 LLM 排查引導）' : ''}：</span>
                  <div class="flex items-center gap-1.5">
                    <button onclick="promptBindKeywordToExistingSop('${escapedQ}')" class="px-2 py-0.5 bg-indigo-700 hover:bg-indigo-600 text-white rounded text-[10px] font-medium transition">
                      ➕ 加入現有 SOP 關鍵字
                    </button>
-                   <button onclick="openEditSopModal(null, '${escapedQ}')" class="px-2 py-0.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-[10px] font-medium transition">
+                   <button onclick="openEditSopModal(null, '${escapedQ}', JSON.parse(this.dataset.llmDraft))" data-llm-draft="${escapedDraftJson}" class="px-2 py-0.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-[10px] font-medium transition">
                      📝 沉澱為新 SOP
                    </button>
                  </div>
