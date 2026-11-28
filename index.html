@@ -1526,6 +1526,8 @@
             role: currentUser?.role || "user",
             query: queryText,
             isDef: isDef,
+            candidateIds: candidateSopIds.slice(0, 10),
+            failedSteps: (inquiryContext.suggestedSteps || []).slice(0, 20),
             candidates: (candidates || []).slice(0, 5).map(m => ({
               sop_id: m.item.sop_id,
               title: m.item.title,
@@ -2990,7 +2992,8 @@
         '系統', '作業系統', 'windows', 'win10', 'win11', 'his', 'vpn', '網路', 'wifi', 'wi-fi', 'ip', 'dns', 'dhcp', '網點', '網路線',
         '帳號', '密碼', '登入', '當機', '藍屏', 'bsod', '開機', '重灌', '軟體', '應用程式', '驅動', '憑證', 'hicos',
         'office', 'word', 'excel', 'powerpoint', 'outlook', '郵件', 'teams', '瀏覽器', 'chrome', 'edge',
-        '掃描器', '投影機', '耳機', '麥克風', '喇叭', '攝影機', '7-zip', 'zip', '解壓縮'
+        '掃描器', '投影機', '耳機', '麥克風', '喇叭', '攝影機', '7-zip', 'zip', '解壓縮',
+        '平板', 'line', 'pdf', '共用資料夾', '視訊會議', '分機電話'
       ];
       return !allowedItKeywords.some(k => q.includes(k));
     }
@@ -3004,8 +3007,8 @@
 
       if (handleVoiceStepShortcut(q)) return;
 
-      // 1. 嚴重硬體與安全異常優先判斷
-      const isSevereHardware = /(冒煙|焦味|斷掉|摔壞|燒掉|電池膨脹|觸電|漏電|火花|進水|直接派工|報修就好)/.test(q);
+      // 1. 嚴重硬體與安全異常優先判斷（避免「網路斷掉」誤判為硬體危險）
+      const isSevereHardware = /(冒煙|焦味|燒焦|燒掉|起火|火花|電池膨脹|觸電|漏電|進水|摔壞|螢幕破裂|(線|接頭|插頭|轉軸|鉸鏈).{0,4}斷(掉|裂)|直接派工|報修就好|直接報修)/.test(q);
       if (isSevereHardware) {
         window.appendUserChat('user', q);
         window.logChatToSupabase('user', q);
@@ -3024,9 +3027,11 @@
 
       const inActiveStepGuidance = Boolean(activeGuidance && activeGuidance.sop && Array.isArray(activeGuidance.steps) && activeGuidance.steps.length > 0);
       const inPendingFollowup = Boolean(inquiryContext.pendingFollowupSopId);
+      const isFirstMessage = turnCount === 0 && !inquiryContext.originalProblem;
+      const hasActiveTopic = Boolean(inquiryContext.originalProblem || (inquiryContext.retrievedCandidates && inquiryContext.retrievedCandidates.length > 0));
 
-      // 2. 僅在非追問且非逐步引導階段執行非資訊設備守衛
-      if (!inActiveStepGuidance && !inPendingFollowup && isNonItEquipmentQuery(q)) {
+      // 2. 僅在首則且尚無進行中主題／選單／追問／步驟時執行非資訊設備守衛
+      if (isFirstMessage && !hasActiveTopic && !inActiveStepGuidance && !inPendingFollowup && isNonItEquipmentQuery(q)) {
         const nonItReply = "此項目不在支援範圍內，小威僅提供電腦、螢幕、鍵盤、滑鼠、印表機、讀卡機、條碼機、標籤列印機、系統等資訊設備，作業系統及軟體之故障排除引導。";
         window.appendUserChat('user', q);
         window.logChatToSupabase('user', q);
@@ -3064,14 +3069,32 @@
       turnCount++;
       window.updateTurnUI();
 
-      // 4. 追問回答納入查詢重新比對 SOP，若切換到更合適的 SOP 則更新引導目標
+      // 4. 追問回答納入查詢重新比對 SOP（需明顯高於原 SOP 且命中新關鍵字才切換）
       if (inPendingFollowup) {
         const pendingSop = knowledgeBase.find(k => k.sop_id === inquiryContext.pendingFollowupSopId);
         inquiryContext.pendingFollowupSopId = null;
         const combinedAfterFollowup = [inquiryContext.originalProblem, ...inquiryContext.supplementaryInfo].join(' ');
         const reMatches = findBestSopMatches(combinedAfterFollowup, knowledgeBase);
-        if (reMatches.length > 0 && reMatches[0].item && reMatches[0].item.sop_id !== pendingSop?.sop_id) {
-          window.proceedGuidanceSteps(reMatches[0].item.sop_id);
+        const origMatches = findBestSopMatches(inquiryContext.originalProblem, knowledgeBase);
+        const prevScore = pendingSop
+          ? (reMatches.find(m => m.item?.sop_id === pendingSop.sop_id)?.score ?? origMatches.find(m => m.item?.sop_id === pendingSop.sop_id)?.score ?? 30)
+          : 0;
+        const topMatch = reMatches[0];
+        const qLower = q.toLowerCase();
+        const topKws = Array.isArray(topMatch?.item?.keywords) ? topMatch.item.keywords : [];
+        const hasNewKeywordHit = topKws.some(kw => {
+          const kwL = String(kw || '').trim().toLowerCase();
+          return kwL.length >= 2 && qLower.includes(kwL);
+        });
+        if (
+          topMatch &&
+          topMatch.item &&
+          topMatch.item.sop_id !== pendingSop?.sop_id &&
+          topMatch.score >= prevScore * 1.2 &&
+          hasNewKeywordHit
+        ) {
+          window.appendUserChat('ai', `依您的補充，改用<b>【${escapeHtml(topMatch.item.title)}】</b>的排除方式：`, false);
+          window.proceedGuidanceSteps(topMatch.item.sop_id);
           return;
         }
         if (pendingSop) {
@@ -3081,16 +3104,6 @@
       }
 
       const isEngineerRole = currentUser && currentUser.role === 'engineer';
-      if (!isEngineerRole && turnCount >= MAX_TURNS) {
-        inquiryContext.unresolvedReason = `已達追問上限（${MAX_TURNS} 輪）仍未排除，轉由報修流程處理`;
-        window.updateXiaoweiMood('ticket', '「已達 5 輪排查上限，小威已為您整理好報修表單！」');
-        const limitMsg = `本次排查已達 <b>${MAX_TURNS} 輪上限</b>，為避免耽誤您的作業，小威已將目前對話與排查紀錄帶入【報修確認表單】，請檢閱並送出！`;
-        window.appendUserChat('ai', limitMsg, false);
-        window.logChatToSupabase('ai', limitMsg);
-        setTimeout(() => openTicketModalPreview(), 350);
-        return;
-      }
-
       let activeSops = knowledgeBase;
       if (!Array.isArray(activeSops) || activeSops.length === 0) {
         try {
@@ -3128,6 +3141,14 @@
 
         const best = matches.length > 0 ? matches[0].item : null;
         startStepByStepGuidance(best, combinedQuery);
+        if (!isEngineerRole && turnCount > MAX_TURNS) {
+          inquiryContext.unresolvedReason = `已達追問上限（${MAX_TURNS} 輪）仍未排除，轉由報修流程處理`;
+          window.updateXiaoweiMood('ticket', '「已達 5 輪排查上限，小威已為您整理好報修表單！」');
+          const limitMsg = `本次排查已達 <b>${MAX_TURNS} 輪上限</b>，為避免耽誤您的作業，小威已將目前對話與排查紀錄帶入【報修確認表單】，請檢閱並送出！`;
+          window.appendUserChat('ai', limitMsg, false);
+          window.logChatToSupabase('ai', limitMsg);
+          setTimeout(() => openTicketModalPreview(), 500);
+        }
       }, 250);
     };
 
@@ -3409,11 +3430,13 @@
           window.logChatToSupabase('ai', escalateAiNotice);
 
           (async () => {
-            const deepQuery = `使用者問題：${inquiryContext.originalProblem}。已嘗試知識庫 [${prevSopId}] ${prevSopTitle} 的所有基本步驟但仍未排除（已測試：${inquiryContext.suggestedSteps.join('；')}）。請提供 3 個不同角度的進階排查或解決步驟。`;
+            const deepQuery = `使用者問題：${inquiryContext.originalProblem}。已嘗試知識庫 [${prevSopId}] ${prevSopTitle} 的所有基本步驟但仍未排除（已測試：${inquiryContext.suggestedSteps.join('；')}）。請提供不重複的進階排查或解決步驟。`;
             const groqRes = await askGroqForTroubleshooting(deepQuery, inquiryContext.retrievedCandidates, false);
-            const extraSteps = (groqRes && Array.isArray(groqRes.steps) && groqRes.steps.length > 0)
+            const triedSet = new Set((inquiryContext.suggestedSteps || []).map(s => String(s).replace(/^\[[^\]]+\]\s*步驟\s*\d+:\s*/, '').trim()));
+            const rawExtra = (groqRes && Array.isArray(groqRes.steps) && groqRes.steps.length > 0)
               ? groqRes.steps
               : (groqRes && groqRes.text ? parseGroqGeneratedSteps(groqRes.text) : []);
+            const extraSteps = rawExtra.filter(s => !triedSet.has(String(s).trim()));
 
             if (extraSteps.length > 0) {
               const aiSopObj = {
