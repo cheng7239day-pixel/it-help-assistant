@@ -1549,14 +1549,20 @@
           const isNoMatch = data?.match_status === 'NO_MATCH' || rawAns === 'NO_MATCH' || groundedIds.length === 0;
 
           if (isNoMatch) {
+            const llmSteps = Array.isArray(data?.llm_steps) && data.llm_steps.length > 0
+              ? data.llm_steps.map(s => String(s || '').trim()).filter(Boolean)
+              : (Array.isArray(data?.suggested_steps) && data.suggested_steps.length > 0
+                ? data.suggested_steps.map(s => String(s || '').trim()).filter(Boolean)
+                : (rawAns && rawAns !== 'NO_MATCH' ? parseGroqGeneratedSteps(rawAns) : []));
+            const llmText = (data?.llm_guidance || data?.fallback_answer || (rawAns && rawAns !== 'NO_MATCH' ? rawAns : '') || (llmSteps.length > 0 ? llmSteps.map((s, i) => `${i + 1}. ${s}`).join('\n') : '')).trim();
             return {
-              text: "",
-              steps: [],
+              text: llmText,
+              steps: llmSteps,
               match_status: 'NO_MATCH',
               grounded_sop_ids: [],
               matched_sop_id: 'NO_MATCH',
               matched_sop: null,
-              source: 'NO_MATCH'
+              source: data?.model_used ? `LLM (${data.model_used})` : 'LLM'
             };
           }
 
@@ -3246,6 +3252,29 @@
       const groqResult = await askGroqForTroubleshooting(combinedQuery, inquiryContext.retrievedCandidates, isDef);
 
       if (groqResult && groqResult.match_status === 'NO_MATCH') {
+        const hasLlmGuidance = Boolean((groqResult.steps && groqResult.steps.length > 0) || (groqResult.text && String(groqResult.text).trim()));
+        if (hasLlmGuidance) {
+          const llmSteps = (Array.isArray(groqResult.steps) && groqResult.steps.length > 0)
+            ? groqResult.steps
+            : parseGroqGeneratedSteps(groqResult.text);
+          const llmSopObj = {
+            sop_id: 'GROQ-SYMPTOM',
+            title: `LLM 排查引導（知識庫無命中）：${inquiryContext.originalProblem.slice(0, 24) || '問題診斷'}`,
+            status: 'AI建議',
+            urgency: inquiryContext.isMajorIncident ? 'P1' : 'P2',
+            escalate_dept: '維護工程組',
+            allow_self_resolve: true
+          };
+          inquiryContext.matchedSop = llmSopObj;
+          activeGuidance = { sop: llmSopObj, steps: llmSteps, currentStepIndex: 0, isGroqFallback: true };
+          window.updateXiaoweiMood('step', '「知識庫無命中，小威已轉由 LLM 整理排查步驟！」');
+          const notice = `知識庫查無相符 SOP（未冒充知識庫命中），已轉換為 <b>${escapeHtml(groqResult.source || 'LLM')}</b> 提供逐步排查引導：`;
+          window.appendUserChat('ai', notice);
+          window.logChatToSupabase('ai', `[NO_MATCH->LLM] ${notice}`);
+          setTimeout(() => presentCurrentStep(), 250);
+          return;
+        }
+
         window.updateXiaoweiMood('thinking', '「已核准知識庫查無直接命中條目，小威為您標示無命中並提供一般排查參考。」');
         const noMatchNotice = `查無已核准 SOP 命中（<b>match_status: NO_MATCH</b>），未冒充知識庫命中使用者問題。以下為一般初步檢查方向（僅供參考，非既有 SOP 條目）：`;
         const fallbackSteps = buildSymptomTroubleshootingSteps(combinedQuery);
