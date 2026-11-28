@@ -3483,15 +3483,54 @@
       }
     };
 
+    function evaluateSingleTicketUrgency(ctx = inquiryContext) {
+      const scope = String(ctx?.impactScope || '');
+      const hasHighBusinessImportance = Boolean(ctx?.hasHighBusinessImportance);
+      const isMultiOrBroadScope = scope.includes('使用者回報多人受影響（待確認）') || scope.includes('多台') || scope.includes('跨單位');
+      const sopRefLevel = String(ctx?.matchedSop?.urgency || 'P2').toUpperCase();
+
+      // 案件緊急度只看這一張單：以影響範圍與業務重要性決定，SOP 等級只當參考上限
+      let level = 'P2';
+      if (hasHighBusinessImportance && isMultiOrBroadScope) {
+        level = 'P1';
+      } else if (hasHighBusinessImportance || isMultiOrBroadScope) {
+        level = 'P2';
+      } else {
+        level = 'P3';
+      }
+
+      const rank = { P3: 1, P2: 2, P1: 3 };
+      const capRank = rank[sopRefLevel] ?? 2;
+      if ((rank[level] ?? 2) > capRank) {
+        level = sopRefLevel;
+      }
+      return {
+        level,
+        sopRefLevel,
+        hasHighBusinessImportance,
+        isMultiOrBroadScope
+      };
+    }
+
     function extractSlotsFromUserMsg(text) {
       const lower = String(text).toLowerCase();
-      if (lower.includes('大家都') || lower.includes('其他人也') || lower.includes('整個科室') || 
-          lower.includes('全部都') || lower.includes('整廠') || lower.includes('多診間') || 
-          lower.includes('多人') || lower.includes('化療') || lower.includes('採血') || lower.includes('急診')) {
-        inquiryContext.impactScope = '多台 / 關鍵醫療作業受影響';
-        inquiryContext.isMajorIncident = true;
+      // 關鍵字拆開處理：業務重要性只影響單筆緊急度；影響範圍交給 SAGE；移除「全部都」避免誤判
+      const hasCriticalUnit = /(急診|採血|化療|手術室|加護|icu)/.test(lower);
+      const hasMultiUnitHint = /(多人|大家都|整個科室|其他人也|整廠|多診間)/.test(lower);
+
+      if (hasCriticalUnit) {
+        inquiryContext.hasHighBusinessImportance = true;
+      }
+
+      if (hasMultiUnitHint) {
+        inquiryContext.impactScope = '使用者回報多人受影響（待確認）';
+        inquiryContext.isMajorIncident = false;
       } else if (lower.includes('只有我') || lower.includes('就這台') || lower.includes('單獨一台')) {
         inquiryContext.impactScope = '單機 / 個人';
+        inquiryContext.isMajorIncident = false;
+      } else if (hasCriticalUnit && !inquiryContext.impactScope) {
+        inquiryContext.impactScope = '單機 / 個人（關鍵業務單位）';
+        inquiryContext.isMajorIncident = false;
       }
 
       if (lower.includes('his') || lower.includes('門診系統') || lower.includes('醫令')) {
@@ -3534,19 +3573,29 @@
       document.getElementById('simple_call_time').value = currentTimeStr;
       document.getElementById('simple_location').value = inquiryContext.location || '';
 
-      const isP1 = inquiryContext.isMajorIncident || (inquiryContext.matchedSop && inquiryContext.matchedSop.urgency === 'P1');
+      const urgEval = evaluateSingleTicketUrgency(inquiryContext);
       const urgencyBadge = document.getElementById('ticketUrgencyBadge');
       const majorBanner = document.getElementById('majorIncidentAlert');
-      if (isP1) {
+      if (urgEval.level === 'P1') {
         if (urgencyBadge) {
-          urgencyBadge.innerText = "P1 緊急 / 疑似重大事件";
-          urgencyBadge.className = "text-[10px] bg-rose-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse";
+          urgencyBadge.innerText = "P1 緊急（本單業務與範圍）";
+          urgencyBadge.className = "text-[10px] bg-rose-600 text-white px-2 py-0.5 rounded-full font-bold";
         }
-        if (majorBanner) majorBanner.classList.remove('hidden');
-      } else {
+        if (majorBanner) {
+          majorBanner.className = "bg-amber-600 text-white px-5 py-2 text-xs font-bold flex items-center justify-between";
+          majorBanner.innerHTML = "<span>⚡ 本單緊急度為 P1；多筆重複案件是否為疑似重大事件由 SAGE 依 30 分鐘內同類案件數研判。</span>";
+          majorBanner.classList.remove('hidden');
+        }
+      } else if (urgEval.level === 'P2') {
         if (urgencyBadge) {
           urgencyBadge.innerText = "P2 一般障礙";
           urgencyBadge.className = "text-[10px] bg-sky-700 text-white px-2 py-0.5 rounded-full";
+        }
+        if (majorBanner) majorBanner.classList.add('hidden');
+      } else {
+        if (urgencyBadge) {
+          urgencyBadge.innerText = "P3 較低／常規";
+          urgencyBadge.className = "text-[10px] bg-slate-600 text-white px-2 py-0.5 rounded-full";
         }
         if (majorBanner) majorBanner.classList.add('hidden');
       }
@@ -3555,11 +3604,11 @@
       const stepsText = inquiryContext.suggestedSteps.length > 0 ? inquiryContext.suggestedSteps.map((s, idx) => `  ${idx + 1}. ${s}`).join('\n') : '  未執行自助排查 (直接轉報修)';
       const failReason = inquiryContext.unresolvedReason || '依序嘗試排查測試後問題仍未解決';
       const matchedRef = inquiryContext.matchedSop
-        ? `[${inquiryContext.matchedSop.sop_id}] ${inquiryContext.matchedSop.title}`
+        ? `[${inquiryContext.matchedSop.sop_id}] ${inquiryContext.matchedSop.title} (SOP參考上限:${urgEval.sopRefLevel})`
         : (inquiryContext.deviceOrSystem || '未匹配特定 SOP');
 
       let problemFullText = `【引用/排查依據】：${matchedRef}
-【影響範圍評估】：${inquiryContext.impactScope}${isP1 ? ' ⚠️【P1 優先/疑似重大事件】' : ''}
+【影響範圍評估】：${inquiryContext.impactScope}（業務重要性:${urgEval.hasHighBusinessImportance ? '高(急診/採血/化療等)' : '一般'}）
 【使用者問題描述】：${inquiryContext.originalProblem || '設備故障報修'}
 【歷程補充說明】：${suppText}
 【已執行排查測試歷程】：
@@ -3623,14 +3672,50 @@ ${stepsText}
                   String(now.getMinutes()).padStart(2, '0') + 
                   String(now.getSeconds()).padStart(2, '0') + '-' + randSuffix;
 
-      const isP1 = inquiryContext.isMajorIncident || (inquiryContext.matchedSop && inquiryContext.matchedSop.urgency === 'P1');
+      const urgEval = evaluateSingleTicketUrgency(inquiryContext);
+      const isP1 = urgEval.level === 'P1';
       const assignedDept = inquiryContext.matchedSop?.escalate_dept || '資訊服務處';
+      const normTicketCompany = normalizeCompanyName(document.getElementById('simple_company').value) || 'DEFAULT_CLIENT';
+      const jurisdictionVal = document.getElementById('simple_jurisdiction').value;
+      const eventTopicVal = classifySageTopic(`${inquiryContext.deviceOrSystem || ''} ${inquiryContext.originalProblem || ''}`);
+      const deviceModelVal = inquiryContext.deviceOrSystem || (inquiryContext.matchedSop ? inquiryContext.matchedSop.title : '一般主機');
+
+      // 交給 SAGE 判斷：查詢 30 分鐘內同單位或同系統是否已有 3 張以上同類案件，才標示疑似重大事件並通知值班人員
+      let recentSimilarCount = 0;
+      try {
+        const cutoffIso = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+        const { data: recentRows } = await supabaseClient
+          .from('tickets')
+          .select('service_id, company_plant, device_model, event_topic, problem_description, created_at, call_time')
+          .eq('tenant_id', normTicketCompany)
+          .gte('created_at', cutoffIso)
+          .limit(100);
+        if (Array.isArray(recentRows)) {
+          const unitKey = `${normTicketCompany} (${jurisdictionVal})`;
+          recentSimilarCount = recentRows.filter(r => {
+            const sameUnit = String(r.company_plant || '').includes(jurisdictionVal) || String(r.company_plant || '') === unitKey;
+            const rTopic = r.event_topic || classifySageTopic(`${r.device_model || ''} ${r.problem_description || ''}`);
+            const sameSysOrTopic = (r.device_model && r.device_model === deviceModelVal) || rTopic === eventTopicVal;
+            return sameUnit || sameSysOrTopic;
+          }).length;
+        }
+      } catch (_recentErr) {
+        recentSimilarCount = 0;
+      }
+
+      const isSuspectedMajorBySage = recentSimilarCount >= 3;
+      const urgencyLabelMap = { P1: 'P1 緊急', P2: 'P2 一般', P3: 'P3 低' };
+      const finalUrgencyText = urgencyLabelMap[urgEval.level] || 'P2 一般';
+      const userReportedMulti = String(inquiryContext.impactScope || '').includes('使用者回報多人受影響（待確認）');
 
       const traceId = `TRC-${currentSessionId}-${sId}`;
       const groundedIds = Array.isArray(inquiryContext.actualQuotedSopIds) && inquiryContext.actualQuotedSopIds.length > 0
         ? inquiryContext.actualQuotedSopIds.map(String).filter(Boolean)
         : (inquiryContext.matchedSop?.sop_id && !['NO_MATCH', 'GROQ-SYMPTOM', 'GROQ-IMG', 'GROQ-DEEP', 'GENERAL-FALLBACK'].includes(String(inquiryContext.matchedSop.sop_id)) ? [String(inquiryContext.matchedSop.sop_id)] : []);
-      const normTicketCompany = normalizeCompanyName(document.getElementById('simple_company').value) || 'DEFAULT_CLIENT';
+      const problemDescWithSageSignal = userReportedMulti
+        ? `${document.getElementById('simple_problem').value}\n【SAGE 參考訊號】：使用者回報多人受影響（待確認，30分鐘內同類案件數：${recentSimilarCount}）`
+        : `${document.getElementById('simple_problem').value}\n【SAGE 30分鐘內同類案件數】：${recentSimilarCount} 筆`;
+
       const ticketPayload = {
         service_id: sId,
         trace_id: traceId,
@@ -3640,8 +3725,8 @@ ${stepsText}
         user_id: (currentUser.id && currentUser.id !== 'admin-master') ? currentUser.id : null,
         client_name: document.getElementById('simple_name').value,
         phone: phoneVal,
-        company_plant: `${normTicketCompany} (${document.getElementById('simple_jurisdiction').value})`,
-        event_topic: classifySageTopic(`${inquiryContext.deviceOrSystem || ''} ${inquiryContext.originalProblem || ''}`),
+        company_plant: `${normTicketCompany} (${jurisdictionVal})`,
+        event_topic: eventTopicVal,
         impact_scope: inquiryContext.impactScope || '單機 / 個人',
         error_code: (inquiryContext.errorCode && inquiryContext.errorCode !== '無明確代碼') ? inquiryContext.errorCode : null,
         department: currentUser.dept || '',
@@ -3650,19 +3735,19 @@ ${stepsText}
         cost_center: "",
         email: document.getElementById('simple_email').value,
         address: locationVal,
-        device_model: inquiryContext.deviceOrSystem || (inquiryContext.matchedSop ? inquiryContext.matchedSop.title : '一般主機'),
+        device_model: deviceModelVal,
         asset_code: inquiryContext.assetCode || (selectedCmdbAsset?.asset_code || ''),
         device_ip: inquiryContext.deviceIp || (selectedCmdbAsset?.device_ip || ''),
         warranty_status: inquiryContext.warrantyStatus || (selectedCmdbAsset?.warranty_status || '保固檢核中'),
         vendor_name: inquiryContext.vendorName || (selectedCmdbAsset?.vendor_name || '威策電腦'),
         device_sn: inquiryContext.deviceSn || (selectedCmdbAsset?.device_sn || ''),
         call_time: document.getElementById('simple_call_time').value,
-        problem_description: document.getElementById('simple_problem').value,
+        problem_description: problemDescWithSageSignal,
         solution: "",
-        dispatch_type: isP1 ? "緊急外派 (疑似重大事件)" : "外派案件",
+        dispatch_type: isSuspectedMajorBySage ? "緊急外派 (SAGE 疑似重大事件)" : (isP1 ? "緊急外派 (本單高緊急度)" : "外派案件"),
         status: "叫修資料確認",
         engineer: `${assignedDept} (調度指派中)`,
-        urgency: isP1 ? 'P1 緊急' : 'P2 一般'
+        urgency: finalUrgencyText
       };
 
       try {
@@ -3672,8 +3757,26 @@ ${stepsText}
 
         if (error) throw error;
 
+        if (isSuspectedMajorBySage && typeof window.notifyIncidentTransitionByMail === 'function') {
+          await window.notifyIncidentTransitionByMail({
+            id: `${normTicketCompany}__${eventTopicVal}__30M`,
+            tenantId: normTicketCompany,
+            topic: `疑似重大事件（30分鐘內同類案件達 ${recentSimilarCount} 筆）：${eventTopicVal}`,
+            unit: `${normTicketCompany} (${jurisdictionVal})`,
+            alertLevel: 'P1',
+            ruleCode: 'C9',
+            state: 'SUSPECT',
+            tickets: [ticketPayload],
+            chats: [],
+            rootCauseHypothesis: `30 分鐘內同單位或同系統已有 ${recentSimilarCount} 張以上同類案件，由 SAGE 判定為疑似重大事件`
+          }, `SAGE 疑似重大事件（30分內同類 ${recentSimilarCount} 筆）`);
+        }
+
         window.closeTicketModal();
-        const successMsg = `🎉 <b>報修案件已成功建立！</b><br>服務編號：<span class="font-mono text-indigo-900 font-bold">${ticketPayload.service_id}</span> (${ticketPayload.urgency})<br>報修時間：<span class="font-mono font-medium">${ticketPayload.call_time}</span><br>所在位置：${ticketPayload.location}<br>派工組別：${assignedDept}<br>案件資料已同步至報修清單，工程師將主動與您聯繫！`;
+        const sageMajorLine = isSuspectedMajorBySage
+          ? `<br><span class="text-rose-700 font-bold">🚨 SAGE 疑似重大事件：30 分鐘內同單位／同系統已有 ${recentSimilarCount} 筆同類案件，已通知值班人員！</span>`
+          : (userReportedMulti ? `<br><span class="text-amber-800">ℹ️ 已記錄「使用者回報多人受影響（待確認）」作為 SAGE 參考訊號（目前 30 分鐘內同類案件：${recentSimilarCount} 筆）。</span>` : '');
+        const successMsg = `🎉 <b>報修案件已成功建立！</b><br>服務編號：<span class="font-mono text-indigo-900 font-bold">${ticketPayload.service_id}</span> (${ticketPayload.urgency})<br>報修時間：<span class="font-mono font-medium">${ticketPayload.call_time}</span><br>所在位置：${ticketPayload.location}<br>派工組別：${assignedDept}${sageMajorLine}<br>案件資料已同步至報修清單，工程師將主動與您聯繫！`;
         window.appendUserChat('ai', successMsg);
         window.logChatToSupabase('ai', `報修案件建立完成：${ticketPayload.service_id} (等級: ${ticketPayload.urgency}, 位置: ${ticketPayload.location})`);
         window.speak("報修案件已成功建立，工程師已接收通知，將儘速聯絡您！");
@@ -4711,7 +4814,7 @@ ${stepsText}
             const allowSelf = (allowSelfRaw === '是' || allowSelfRaw === '部分' || allowSelfRaw === true || allowSelfRaw === 'true');
 
             const escalateDept = getVal(r, ['escalate_dept']) || '維護工程組';
-            const urgency = getVal(r, ['urgency']) || ((category.includes('HIS') || category.includes('急診') || category.includes('門診')) ? 'P1' : 'P2');
+            const urgency = getVal(r, ['urgency']) || 'P2';
 
             payload.push({
               sop_id: sopId,
