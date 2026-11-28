@@ -4,16 +4,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>威策電腦 - IT 智慧服務台與案件管理系統</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="[https://cdn.tailwindcss.com](https://cdn.tailwindcss.com)"></script>
   <!-- Supabase 客戶端 SDK (UMD 版) -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="[https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js](https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js)"></script>
   <!-- SheetJS：支援解析 Excel (.xlsx / .xls) -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="[https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js](https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js)"></script>
   <!-- PDF.js 與 JSZip：支援前端直接解析 .pdf、.docx/.doc 與 .pptx/.ppt 文件轉知識庫 -->
-  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="[https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js](https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js)"></script>
+  <script src="[https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js](https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js)"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
+    @import url('[https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap](https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap)');
     body {
       font-family: 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif;
       -webkit-tap-highlight-color: transparent;
@@ -256,7 +256,6 @@
         </div>
       </div>
     </section>
-
     <!-- 2. 使用者介面：交談視窗內走動的小男孩（小威）工作區 -->
     <section id="userSection" class="hidden flex-1 min-h-0 w-full h-full flex flex-col bg-white text-slate-800 overflow-hidden relative">
       
@@ -1454,7 +1453,6 @@
       </form>
     </div>
   </div>
-
   <!-- 7. 核心 JavaScript (知識庫無答案時自動呼叫 Groq AI 尋找解決方法 + 逐步排查) -->
   <script>
     // ==========================================
@@ -1504,7 +1502,7 @@
       return stepsArr.map((s, idx) => `${idx + 1}. ${s}`).join('\n');
     }
 
-    async function askGroqForTroubleshooting(queryText, candidates = [], isDef = false) {
+    async function askGroqForTroubleshooting(queryText, candidates = [], isDef = false, reqMode = 'rag_chat') {
       const hasRefs = Array.isArray(candidates) && candidates.length > 0;
       const refSummary = hasRefs
         ? candidates.slice(0, 5).map((m, i) => `SOP ${i + 1} [${m.item.sop_id}] ${m.item.title}（分類:${m.item.category || ''}）：${(m.item.safe_steps || '').slice(0, 320)}`).join('\n\n')
@@ -1521,21 +1519,21 @@
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            mode: "rag_chat",
+            mode: reqMode,
             session_id: currentSessionId,
             role: currentUser?.role || "user",
             query: queryText,
             isDef: isDef,
-            candidateIds: candidateSopIds.slice(0, 10),
+            candidateIds: reqMode === 'deep_escalation' ? [] : candidateSopIds.slice(0, 10),
             failedSteps: (inquiryContext.suggestedSteps || []).slice(0, 20),
-            candidates: (candidates || []).slice(0, 5).map(m => ({
+            candidates: reqMode === 'deep_escalation' ? [] : (candidates || []).slice(0, 5).map(m => ({
               sop_id: m.item.sop_id,
               title: m.item.title,
               category: m.item.category || '',
               symptom: m.item.symptom || '',
               keywords: m.item.keywords || [],
               learned_keywords: m.item.learned_keywords || [],
-              status: m.item.status || '已審核',
+              status: m.item.status || '',
               followup_questions: m.item.followup_questions || '',
               escalation: m.item.escalation || '',
               escalate_dept: m.item.escalate_dept || '維護工程組',
@@ -2168,7 +2166,8 @@
       visionDiagnosisText: '',
       unresolvedReason: '',
       startTime: '',
-      pendingFollowupSopId: null
+      pendingFollowupSopId: null,
+      disambiguationShown: false
     };
 
     window.resetInquiryContext = function() {
@@ -2199,7 +2198,8 @@
         visionDiagnosisText: '',
         unresolvedReason: '',
         startTime: `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`,
-        pendingFollowupSopId: null
+        pendingFollowupSopId: null,
+        disambiguationShown: false
       };
       window.updateTurnUI();
     };
@@ -3129,7 +3129,18 @@
       inquiryContext.retrievedCandidates = matches.slice(0, 3);
 
       setTimeout(() => {
-        if (matches.length >= 2 && matches[0].score >= 28 && (matches[0].score - matches[1].score <= 6)) {
+        if (!isEngineerRole && turnCount > MAX_TURNS) {
+          inquiryContext.unresolvedReason = `已達追問上限（${MAX_TURNS} 輪）仍未排除，轉由報修流程處理`;
+          window.updateXiaoweiMood('ticket', '「已達 5 輪排查上限，小威已為您整理好報修表單！」');
+          const limitMsg = `本次排查已達 <b>${MAX_TURNS} 輪上限</b>，為避免耽誤您的作業，小威已將目前對話與排查紀錄帶入【報修確認表單】，請檢閱並送出！`;
+          window.appendUserChat('ai', limitMsg, false);
+          window.logChatToSupabase('ai', limitMsg);
+          openTicketModalPreview();
+          return;
+        }
+
+        if (!inquiryContext.disambiguationShown && matches.length >= 2 && matches[0].score >= 28 && (matches[0].score - matches[1].score <= 6)) {
+          inquiryContext.disambiguationShown = true;
           const topOptions = [matches[0].item, matches[1].item];
           if (matches[2] && matches[0].score - matches[2].score <= 8) topOptions.push(matches[2].item);
           const clarifyMsg = '小威在知識庫中找到幾筆相似的排除指引，請問您的狀況最接近哪一種？';
@@ -3141,14 +3152,6 @@
 
         const best = matches.length > 0 ? matches[0].item : null;
         startStepByStepGuidance(best, combinedQuery);
-        if (!isEngineerRole && turnCount > MAX_TURNS) {
-          inquiryContext.unresolvedReason = `已達追問上限（${MAX_TURNS} 輪）仍未排除，轉由報修流程處理`;
-          window.updateXiaoweiMood('ticket', '「已達 5 輪排查上限，小威已為您整理好報修表單！」');
-          const limitMsg = `本次排查已達 <b>${MAX_TURNS} 輪上限</b>，為避免耽誤您的作業，小威已將目前對話與排查紀錄帶入【報修確認表單】，請檢閱並送出！`;
-          window.appendUserChat('ai', limitMsg, false);
-          window.logChatToSupabase('ai', limitMsg);
-          setTimeout(() => openTicketModalPreview(), 500);
-        }
       }, 250);
     };
 
@@ -3430,8 +3433,8 @@
           window.logChatToSupabase('ai', escalateAiNotice);
 
           (async () => {
-            const deepQuery = `使用者問題：${inquiryContext.originalProblem}。已嘗試知識庫 [${prevSopId}] ${prevSopTitle} 的所有基本步驟但仍未排除（已測試：${inquiryContext.suggestedSteps.join('；')}）。請提供不重複的進階排查或解決步驟。`;
-            const groqRes = await askGroqForTroubleshooting(deepQuery, inquiryContext.retrievedCandidates, false);
+            const deepQuery = `使用者問題：${inquiryContext.originalProblem}。已嘗試知識庫 [${prevSopId}] ${prevSopTitle} 的所有基本步驟但仍未排除（已測試：${inquiryContext.suggestedSteps.slice(-10).map(s => String(s).slice(0, 200)).join('；')}）。請提供不重複的進階排查或解決步驟。`;
+            const groqRes = await askGroqForTroubleshooting(deepQuery, [], false, 'deep_escalation');
             const triedSet = new Set((inquiryContext.suggestedSteps || []).map(s => String(s).replace(/^\[[^\]]+\]\s*步驟\s*\d+:\s*/, '').trim()));
             const rawExtra = (groqRes && Array.isArray(groqRes.steps) && groqRes.steps.length > 0)
               ? groqRes.steps
@@ -3513,7 +3516,6 @@
         inquiryContext.location = locMatch[0];
       }
     }
-
     // ==========================================
     // K. 精簡 7 欄位報修確認表單控制
     // ==========================================
@@ -4959,7 +4961,7 @@ ${stepsText}
             return `
               <div class="flex items-start gap-2 py-1 border-b border-slate-800/80 last:border-b-0 text-[11px]">
                 <span class="shrink-0 font-bold ${isU ? 'text-sky-300' : 'text-amber-400'}">${isU ? '👤 使用者' : '👦 小威'}</span>
-                <span class="flex-1 text-slate-200 whitespace-pre-line leading-relaxed">${m.message_content}</span>
+                <span class="flex-1 text-slate-200 whitespace-pre-line leading-relaxed">${escapeHtml(m.message_content)}</span>
                 <span class="shrink-0 font-mono text-[10px] text-slate-500">${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})}</span>
               </div>
             `;
