@@ -4954,10 +4954,8 @@ ${extractedText.slice(0, 11000)}`;
 
           const llmDraftObj = {
             keyword: primaryQuestion,
-            title: isLlmNoMatchSession
-              ? `LLM 排查引導：${primaryQuestion.slice(0, 28)}`
-              : `針對「${primaryQuestion}」之處理 SOP`,
-            category: isLlmNoMatchSession ? 'LLM排查引導-軟體與系統' : '基礎電腦-一般問題',
+            title: primaryQuestion ? `針對「${primaryQuestion}」之處理 SOP` : '',
+            category: '基礎電腦-一般問題',
             followup: isLlmNoMatchSession
               ? `請確認「${primaryQuestion}」發生的設備／作業系統版本、錯誤提示文字，以及是否已完成下列 LLM 排查步驟？`
               : '',
