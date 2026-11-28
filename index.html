@@ -2878,6 +2878,127 @@
       return parsed.length > 0 ? parsed : [text.trim()];
     }
 
+    // ==========================================
+    // 關鍵字正規化：所有寫入 kb_solutions.keywords 的路徑皆經由此函式
+    // 支援：真正的陣列、JSON 陣列字串 ["a","b"]、Postgres 陣列字串 {a,b}、
+    //       以 換行 , ， 、 ; ； | 分隔的文字，以及先前被逗號切壞的 JSON 片段
+    // 刻意「不」以空白與斜線切分，避免拆開「Ctrl + Alt」「啟動服務/元件」「之處理 SOP」等詞
+    // ==========================================
+    const KEYWORD_SPLIT_RE = /[\r\n,，、;；|]+/;
+    const KEYWORD_MAX_LEN = 50;
+
+    function keywordDedupKey(w) {
+      return String(w || '').replace(/[\s,，、/／]/g, '').toLowerCase();
+    }
+
+    function tryParseJsonArray(str) {
+      const s = String(str || '').trim();
+      if (!s.startsWith('[') || !s.endsWith(']')) return null;
+      const candidates = [s, s.replace(/[“”]/g, '"'), s.replace(/'/g, '"')];
+      for (const c of candidates) {
+        try {
+          const v = JSON.parse(c);
+          if (Array.isArray(v)) return v;
+        } catch (_e) {}
+      }
+      return null;
+    }
+
+    function parsePgArrayLiteral(str) {
+      const s = String(str || '').trim();
+      if (!s.startsWith('{') || !s.endsWith('}')) return null;
+      const body = s.slice(1, -1);
+      if (!body.trim()) return [];
+      const out = [];
+      let cur = '', inQuote = false;
+      for (let i = 0; i < body.length; i++) {
+        const ch = body[i];
+        if (inQuote && ch === '\\' && i + 1 < body.length) { cur += body[++i]; continue; }
+        if (ch === '"') { inQuote = !inQuote; continue; }
+        if (ch === ',' && !inQuote) { out.push(cur); cur = ''; continue; }
+        cur += ch;
+      }
+      out.push(cur);
+      return out;
+    }
+
+    // 還原「JSON 陣列字串被逗號切開」的舊資料，例如 ['["忘記密碼"', '"密碼不對"]', '忘記密碼如何重設']
+    function repairSplitJsonFragments(arr) {
+      const out = [];
+      let buf = null;
+      for (const raw of arr) {
+        const e = String(raw ?? '').trim();
+        if (buf === null && e.startsWith('[') && !tryParseJsonArray(e)) {
+          buf = [e];
+          continue;
+        }
+        if (buf !== null) {
+          buf.push(e);
+          if (e.endsWith(']')) {
+            const parsed = tryParseJsonArray(buf.join(','));
+            if (parsed) out.push(...parsed); else out.push(...buf);
+            buf = null;
+          }
+          continue;
+        }
+        out.push(raw);
+      }
+      if (buf !== null) out.push(...buf);
+      return out;
+    }
+
+    function flattenKeywordInput(value, depth = 0) {
+      if (value === null || value === undefined || depth > 4) return [];
+      if (Array.isArray(value)) {
+        return repairSplitJsonFragments(value).flatMap(v => flattenKeywordInput(v, depth + 1));
+      }
+      const str = String(value).replace(/^\ufeff/, '').trim();
+      if (!str) return [];
+      const jsonArr = tryParseJsonArray(str);
+      if (jsonArr) return flattenKeywordInput(jsonArr, depth + 1);
+      const pgArr = parsePgArrayLiteral(str);
+      if (pgArr) return flattenKeywordInput(pgArr, depth + 1);
+      // 已是陣列元素（depth > 0）時視為完整關鍵字，不再切分，保留「密碼即將到期，如何更換」這類含標點的詞
+      if (depth > 0) return [str];
+      return str.split(KEYWORD_SPLIT_RE);
+    }
+
+    function cleanKeywordToken(w) {
+      return String(w ?? '')
+        .replace(/^[\s\[\]{}"'“”「」]+|[\s\[\]{}"'“”「」]+$/g, '')
+        .replace(/\\"/g, '"')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function normalizeKeywordList(value, opts = {}) {
+      const { title = '', sopId = '', appendTitle = true } = opts;
+      const titleClean = cleanKeywordToken(title);
+      const sopIdKey = keywordDedupKey(sopId);
+      // 舊版以 / 與空白切分時會把編號拆成「SOP」等殘片，一併排除編號的英文前綴（如 SOP、ENG、DOC）
+      const sopPrefixKey = keywordDedupKey(String(sopId).split(/[-_]/)[0] || '');
+      const titleKey = keywordDedupKey(titleClean);
+      const seen = new Set();
+      if (appendTitle && titleKey) seen.add(titleKey);
+
+      const result = [];
+      for (const raw of flattenKeywordInput(value)) {
+        const w = cleanKeywordToken(raw);
+        if (!w || w.length > KEYWORD_MAX_LEN) continue;
+        const key = keywordDedupKey(w);
+        if (!key || key === sopIdKey || (sopPrefixKey && key === sopPrefixKey) || seen.has(key)) continue;
+        seen.add(key);
+        result.push(w);
+      }
+      if (appendTitle && titleClean) result.push(titleClean);
+      return result;
+    }
+
+    // 供編輯欄位顯示用：以「、」串接，與 normalizeKeywordList 的切分規則互為可逆
+    function formatKeywordsForInput(value) {
+      return normalizeKeywordList(value, { appendTitle: false }).join('、');
+    }
+
     function extractFollowupText(sop) {
       if (!sop) return '';
       if (sop.followup_questions && !sop.followup_questions.includes('無需追問')) {
@@ -2902,11 +3023,12 @@
         const targetSop = knowledgeBase.find(k => k.sop_id === sopId);
         if (!targetSop) return;
 
-        let currentKws = Array.isArray(targetSop.keywords) ? [...targetSop.keywords] : [targetSop.title];
-        const lowerKws = currentKws.map(k => String(k).toLowerCase());
+        // 以 normalizeKeywordList 比對與寫入：同時修復既有被切壞的關鍵字，並避免只差在標點的重複詞
+        const existingKws = normalizeKeywordList(targetSop.keywords, { title: targetSop.title, sopId });
+        const existingKeys = new Set(existingKws.map(keywordDedupKey));
 
-        if (!lowerKws.includes(cleanKeyword.toLowerCase())) {
-          currentKws.push(cleanKeyword);
+        if (!existingKeys.has(keywordDedupKey(cleanKeyword))) {
+          const currentKws = normalizeKeywordList([...existingKws, cleanKeyword], { title: targetSop.title, sopId });
           targetSop.keywords = currentKws;
 
           await supabaseClient
@@ -4125,7 +4247,7 @@ ${stepsText}
         const initStatus = isEngineer && item.status === '已審核' ? '草稿待審' : (item.status || '草稿待審');
         document.getElementById('edit_sop_status').value = initStatus;
         document.getElementById('edit_sop_title').value = item.title || '';
-        document.getElementById('edit_sop_keywords').value = Array.isArray(item.keywords) ? item.keywords.join(', ') : (item.keywords || '');
+        document.getElementById('edit_sop_keywords').value = formatKeywordsForInput(item.keywords);
         document.getElementById('edit_sop_followup').value = item.followup_questions || '';
         document.getElementById('edit_sop_steps').value = item.safe_steps || item.steps || '';
         document.getElementById('edit_sop_audience').value = item.target_audience || '使用者';
@@ -4184,8 +4306,7 @@ ${stepsText}
       const urgency = document.getElementById('edit_sop_urgency').value;
       const allowSelf = document.getElementById('edit_sop_self_resolve').value === 'true';
 
-      let keywords = kwStr.split(/[,，、/ \t\n]+/).map(s => s.trim()).filter(Boolean);
-      if (!keywords.includes(title)) keywords.push(title);
+      const keywords = normalizeKeywordList(kwStr, { title, sopId });
 
       const nowStr = new Date().toISOString().slice(0, 10);
 
@@ -4542,8 +4663,8 @@ ${extractedText.slice(0, 11000)}`;
             </div>
             <div>
               <label class="block text-[10px] font-bold text-slate-500">檢索關鍵字（逗號分隔）</label>
-              <input type="text" value="${(Array.isArray(r.keywords) ? r.keywords.join(', ') : '').replace(/"/g, '&quot;')}"
-                     onchange="pendingConvertedDocRecords[${idx}].keywords = this.value.split(/[,，、]+/).map(s=>s.trim()).filter(Boolean)"
+              <input type="text" value="${escapeHtml(formatKeywordsForInput(r.keywords))}"
+                     onchange="pendingConvertedDocRecords[${idx}].keywords = normalizeKeywordList(this.value, { appendTitle: false })"
                      class="w-full border border-slate-300 rounded px-2 py-1 text-xs">
             </div>
           </div>
@@ -4570,8 +4691,7 @@ ${extractedText.slice(0, 11000)}`;
         const isAdmin = currentUser && currentUser.role === 'admin';
         const nowStr = new Date().toISOString().slice(0, 10);
         const rowsToUpsert = pendingConvertedDocRecords.map(r => {
-          const kws = Array.isArray(r.keywords) ? [...r.keywords] : [];
-          if (r.title && !kws.includes(r.title)) kws.push(r.title);
+          const kws = normalizeKeywordList(r.keywords, { title: r.title, sopId: r.sop_id });
           return {
             sop_id: r.sop_id,
             category: r.category || '匯入文件-操作指引',
@@ -4724,18 +4844,10 @@ ${extractedText.slice(0, 11000)}`;
             const subCat = getVal(r, ['子類', 'sub_category']) || '';
             const category = getVal(r, ['category']) || (mainCat ? (subCat ? `${mainCat}-${subCat}` : mainCat) : '一般分類');
 
-            let keywords = [];
-            const kwArr = getVal(r, ['keywords', '檢索關鍵字陣列']);
-            const kwStr = getVal(r, ['使用者常見說法(檢索關鍵字)', '關鍵字', 'keywords']);
-
-            if (Array.isArray(kwArr) && kwArr.length > 0) {
-              keywords = kwArr.map(s => String(s).trim()).filter(Boolean);
-            } else if (typeof kwStr === 'string' && kwStr.trim()) {
-              keywords = kwStr.split(/[,，、/ \t\n]+/).map(s => s.trim()).filter(Boolean);
-            } else {
-              keywords = [title];
-            }
-            if (title && !keywords.includes(title)) keywords.push(title);
+            // 關鍵字欄位可能是：真正的陣列（JSON 匯入）、JSON 陣列字串（Excel 儲存格）、
+            // Postgres 陣列字串，或以 , ， 、 ; 換行 分隔的文字；統一交由 normalizeKeywordList 處理
+            const kwRaw = getVal(r, ['keywords', '檢索關鍵字陣列', '使用者常見說法(檢索關鍵字)', '關鍵字']);
+            const keywords = normalizeKeywordList(kwRaw, { title, sopId });
 
             const prebuiltSafeSteps = getVal(r, ['safe_steps']);
             const steps = getVal(r, ['處理步驟/解答', 'raw_steps', 'steps']) || '';
