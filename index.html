@@ -514,7 +514,12 @@
               <h3 class="text-sm font-bold text-white">SOP 知識庫 (Supabase `kb_solutions` 表)</h3>
               <p id="kbGovernanceSummary" class="text-[11px] text-slate-400 mt-0.5">載入知識庫治理統計中...</p>
             </div>
-            <div class="flex items-center space-x-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <input id="kbKeywordFilter" type="text" oninput="renderKbList()" placeholder="🔍 相關字篩選（標題／關鍵字／SOP編號）..."
+                     class="bg-slate-800 border border-slate-600 rounded px-2.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-400">
+              <button type="button" onclick="clearKbKeywordFilter()" class="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-xs" title="清除相關字篩選">
+                清除
+              </button>
               <select id="kbStatusFilter" onchange="renderKbList()" class="bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200">
                 <option value="ALL">全部狀態 (不含已停用)</option>
                 <option value="已審核">僅顯示：已審核</option>
@@ -3970,6 +3975,12 @@ ${stepsText}
       }
     };
 
+    window.clearKbKeywordFilter = function() {
+      const kwInput = document.getElementById('kbKeywordFilter');
+      if (kwInput) kwInput.value = '';
+      renderKbList();
+    };
+
     function renderKbList() {
       const c = document.getElementById('kbListContainer');
       if (!c) return;
@@ -3977,6 +3988,7 @@ ${stepsText}
 
       const filterEl = document.getElementById('kbStatusFilter');
       const filterVal = filterEl ? filterEl.value : 'ALL';
+      const kwQuery = String(document.getElementById('kbKeywordFilter')?.value || '').trim().toLowerCase();
 
       let filtered = knowledgeBase;
       if (filterVal === 'ALL') {
@@ -3985,8 +3997,16 @@ ${stepsText}
         filtered = knowledgeBase.filter(k => (k.status || '草稿待審') === filterVal);
       }
 
+      if (kwQuery) {
+        filtered = filtered.filter(k => {
+          const kwText = Array.isArray(k.keywords) ? k.keywords.join(' ') : String(k.keywords || '');
+          const hay = `${k.sop_id || ''} ${k.category || ''} ${k.title || ''} ${kwText} ${k.safe_steps || ''}`.toLowerCase();
+          return hay.includes(kwQuery);
+        });
+      }
+
       if (!filtered || filtered.length === 0) {
-        c.innerHTML = '<div class="col-span-2 text-center text-slate-500 p-6">目前篩選條件下無知識庫資料，請調整篩選或匯入 sage_kb_rag_merged_v3.json</div>';
+        c.innerHTML = '<div class="col-span-2 text-center text-slate-500 p-6">目前篩選條件下無知識庫資料，請調整相關字或狀態篩選</div>';
         return;
       }
 
