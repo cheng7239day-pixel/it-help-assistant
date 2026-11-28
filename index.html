@@ -2,18 +2,16 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>威策電腦 - IT 智慧服務台與案件管理系統</title>
-  <!-- TODO(P3)：Tailwind Play CDN 僅適合開發，正式環境請改用 Tailwind CLI 建置 CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Supabase 客戶端 SDK (UMD 版) -->
-  <!-- 鎖定確切版本並加上 SRI；升級時請同步更新 integrity -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.2/dist/umd/supabase.js" integrity="sha384-A97u3Qnt9GZHURO9YJZRe7VQgGUeFzcv6I1oIGnUTxQrCxnpQMwR0/G8F2zt9abZ" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <!-- SheetJS：支援解析 Excel (.xlsx / .xls) -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <!-- PDF.js 與 JSZip：支援前端直接解析 .pdf、.docx/.doc 與 .pptx/.ppt 文件轉知識庫 -->
-  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js" integrity="sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
     body {
@@ -132,7 +130,7 @@
 
     <div class="flex items-center space-x-1.5">
       <span id="edgeGatewayBadge" class="hidden sm:flex text-[9px] bg-indigo-900/90 text-sky-200 border border-indigo-400/50 px-2 py-0.5 rounded-full items-center gap-1">
-        <span>⚡</span> 知識庫 + AI 輔助
+        <span>⚡</span> RAG + Groq AI
       </span>
       <span id="supabaseStatusBadge" class="text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-600/50 px-2 py-0.5 rounded-full">
         ● Supabase RAG 連線中
@@ -271,7 +269,7 @@
           </span>
           <span id="ragGuardBadge" class="text-[10px] bg-amber-100 text-amber-950 border border-amber-300 px-1.5 py-0.2 rounded font-medium flex items-center gap-1">
             <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-            知識庫 + AI 輔助
+            SOP + Groq 智能推理
           </span>
         </span>
         <div class="flex items-center gap-1.5">
@@ -1460,54 +1458,7 @@
   <!-- 7. 核心 JavaScript (知識庫無答案時自動呼叫 Groq AI 尋找解決方法 + 逐步排查) -->
   <script>
     // ==========================================
-    // 頁面內提示訊息（取代 alert），以 textContent 輸出避免 XSS
-    // ==========================================
-    function detectToastType(msg) {
-      const t = String(msg || '').trim();
-      if (/^(❌|⛔|🚫)/.test(t) || /失敗|錯誤|異常|不符|不一致|權限不足/.test(t.slice(0, 20))) return 'error';
-      if (/^(🎉|✅)/.test(t) || /成功|已更新|已核准/.test(t.slice(0, 20))) return 'success';
-      if (/^(⚠️|⏳|⏱️)/.test(t) || /請(輸入|填寫|先|稍候)/.test(t.slice(0, 12))) return 'warn';
-      return 'info';
-    }
-    function showToast(message, type, duration) {
-      const msg = String(message ?? '');
-      const kind = type || detectToastType(msg);
-      const ms = duration || (kind === 'error' ? 8000 : kind === 'warn' ? 6000 : 4000);
-      let box = document.getElementById('toastContainer');
-      if (!box) {
-        box = document.createElement('div');
-        box.id = 'toastContainer';
-        box.setAttribute('role', 'status');
-        box.setAttribute('aria-live', 'polite');
-        box.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:8px;width:min(92vw,420px);pointer-events:none;';
-        document.body.appendChild(box);
-      }
-      const colors = {
-        error:   'background:#fff1f2;color:#881337;border:1px solid #fda4af;',
-        success: 'background:#ecfdf5;color:#064e3b;border:1px solid #6ee7b7;',
-        warn:    'background:#fffbeb;color:#78350f;border:1px solid #fcd34d;',
-        info:    'background:#eff6ff;color:#1e3a8a;border:1px solid #93c5fd;'
-      };
-      const item = document.createElement('div');
-      item.style.cssText = colors[kind] + 'pointer-events:auto;padding:10px 36px 10px 14px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.15);font-size:13px;line-height:1.5;white-space:pre-line;position:relative;opacity:0;transition:opacity .2s;';
-      if (kind === 'error') item.setAttribute('role', 'alert');
-      item.textContent = msg;
-      const close = document.createElement('button');
-      close.type = 'button';
-      close.setAttribute('aria-label', '關閉提示');
-      close.textContent = '×';
-      close.style.cssText = 'position:absolute;top:4px;right:8px;background:none;border:none;font-size:18px;line-height:1;cursor:pointer;color:inherit;';
-      const remove = () => { item.style.opacity = '0'; setTimeout(() => item.remove(), 200); };
-      close.onclick = remove;
-      item.appendChild(close);
-      box.appendChild(item);
-      requestAnimationFrame(() => { item.style.opacity = '1'; });
-      setTimeout(remove, ms);
-    }
-    window.showToast = showToast;
-
-    // ==========================================
-    // A. Supabase 與 Edge Function 引擎
+    // A. Supabase、Edge Function 與 Groq AI 雙通道引擎
     // ==========================================
     const SUPABASE_URL = 'https://tgvuxmlkbhnnjsyajjow.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_EE0J2uwbUorM9ywIXsbjdw_usVeipmc';
@@ -1655,7 +1606,7 @@
       return null;
     }
 
-    // 2. 照片視覺辨識（僅透過 Edge Function vision_diagnose）
+    // 2. 照片視覺辨識（優先走 Edge Function vision_diagnose；若回傳 502 則直接呼叫 Groq Vision 模型判讀圖片）
     async function diagnoseImageWithEdge(compressedBase64, userHint = '') {
       try {
         const res = await fetchWithTimeout(EDGE_GATEWAY_URL, {
@@ -1678,10 +1629,54 @@
           }
         }
       } catch (e) {
-        console.warn("視覺閘道呼叫異常:", e);
+        console.warn("視覺閘道呼叫異常，改由 Groq Vision 直連辨識:", e);
       }
 
-      // 不在前端直連 Groq：金鑰不可放在瀏覽器端，Edge Function 失敗時由呼叫端顯示明確錯誤
+      // Edge Function 502 時改用 Groq Vision (llama-4-scout-17b-16e-instruct) 直接判讀照片內容
+      const visionPrompt = `你是專業 IT 維護工程師助手「小威」。請仔細判讀這張設備或螢幕故障照片，嚴格只輸出純 JSON（不要 markdown 標記）：
+{"device_type":"設備或畫面類型(如 Windows 藍屏 BSOD、印表機、讀卡機、HIS視窗)","error_code":"畫面上的錯誤代碼或停止代碼(如 CRITICAL_PROCESS_DIED、0x0000007B；無則填無明確代碼)","error_text":"畫面關鍵錯誤訊息繁體中文摘要(60字內)","search_query":"適合檢索知識庫的精準關鍵短語","confidence":"high"}
+使用者補充：${userHint || "無"}`;
+
+      for (const vModel of ["meta-llama/llama-4-scout-17b-16e-instruct", "meta-llama/llama-4-maverick-17b-128e-instruct"]) {
+        try {
+          const gRes = await fetchWithTimeout(GROQ_DIRECT_URL, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${DEFAULT_GROQ_KEY}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              model: vModel,
+              messages: [{
+                role: "user",
+                content: [
+                  { type: "text", text: visionPrompt },
+                  { type: "image_url", image_url: { url: compressedBase64 } }
+                ]
+              }],
+              temperature: 0.1,
+              max_tokens: 450
+            })
+          });
+          if (gRes.ok) {
+            const gData = await gRes.json();
+            const raw = gData.choices?.[0]?.message?.content?.trim() || "";
+            const cleaned = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+            const parsed = JSON.parse(cleaned.match(/\{[\s\S]*\}/)?.[0] || cleaned);
+            if (parsed && parsed.search_query) {
+              return {
+                device_type: parsed.device_type || "設備錯誤畫面",
+                error_code: parsed.error_code || "無明確代碼",
+                error_text: parsed.error_text || raw.slice(0, 80),
+                search_query: parsed.search_query,
+                confidence: parsed.confidence || "high"
+              };
+            }
+          }
+        } catch (err) {
+          console.warn(`Groq Vision [${vModel}] 呼叫異常:`, err);
+        }
+      }
       return null;
     }
 
@@ -1896,7 +1891,7 @@
       if (mood === 'thinking') {
         window.setBoyExpression('thinking');
         if (walkerEl) walkerEl.classList.add('paused');
-        bubbleEl.innerText = customText || '「小威正在動腦找解決方法...」';
+        bubbleEl.innerText = customText || '「小威正在請 Groq AI 動腦找解決方法...」';
       } else if (mood === 'step') {
         window.setBoyExpression('surprised');
         if (walkerEl) walkerEl.classList.remove('paused');
@@ -2025,7 +2020,7 @@
       if (String(sop.sop_id).startsWith('GROQ-')) {
         return `
           <div class="mt-2 pt-1.5 border-t border-slate-100 text-[10px] text-amber-800 flex flex-wrap items-center justify-between gap-1">
-            <span>⚡ 知識庫沒有相符的指引，以下為 <b>AI 建議（未經資訊室審核）</b></span>
+            <span>⚡ 知識庫無相符條目，由 <b>Groq AI</b> 生成建議排查步驟</span>
             <span class="bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.2 rounded font-bold">AI 建議排查</span>
           </div>
         `;
@@ -2182,9 +2177,6 @@
     let turnCount = 0;
     const MAX_TURNS = 5;
     let knowledgeBase = [];
-    // 知識庫快取：登入時載入，之後超過 KB_CACHE_TTL_MS 才重新下載，不再每則訊息都抓整張表
-    let kbLastLoadedAt = 0;
-    const KB_CACHE_TTL_MS = 5 * 60 * 1000;
     let uploadedImageBase64 = null;
     let isForcedPasswordChange = false;
 
@@ -2197,46 +2189,55 @@
 
     let selectedCmdbAsset = null;
 
-    // 初始與重設共用同一份結構，避免 resetInquiryContext 漏掉欄位
-    function formatContextStartTime(d = new Date()) {
-      return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-    }
-    function createEmptyInquiryContext() {
-      return {
+    let inquiryContext = {
+      originalProblem: '',
+      supplementaryInfo: [],
+      categoryType: 'GENERAL',
+      matchedSop: null,
+      retrievedCandidates: [],
+      actualQuotedSopIds: [],
+      suggestedSteps: [],
+      userAttempts: [],
+      deviceOrSystem: '',
+      assetCode: '',
+      deviceIp: '',
+      deviceSn: '',
+      warrantyStatus: '',
+      vendorName: '威策電腦',
+      impactScope: '個人/單機',
+      isMajorIncident: false,
+      location: '',
+      errorCode: '',
+      visionDiagnosisText: '',
+      unresolvedReason: '',
+      startTime: '',
+      pendingFollowupSopId: null
+    };
+
+    window.resetInquiryContext = function() {
+      turnCount = 0;
+      currentSessionId = 'SESSION-' + Date.now();
+      uploadedImageBase64 = null;
+      activeGuidance = { sop: null, steps: [], currentStepIndex: 0 };
+      const now = new Date();
+      inquiryContext = {
         originalProblem: '',
         supplementaryInfo: [],
         categoryType: 'GENERAL',
         matchedSop: null,
         retrievedCandidates: [],
-        actualQuotedSopIds: [],
         suggestedSteps: [],
         userAttempts: [],
         deviceOrSystem: '',
-        assetCode: '',
-        deviceIp: '',
-        deviceSn: '',
-        warrantyStatus: '',
-        vendorName: '威策電腦',
         impactScope: '個人/單機',
         isMajorIncident: false,
         location: '',
         errorCode: '',
         visionDiagnosisText: '',
         unresolvedReason: '',
-        startTime: formatContextStartTime(),
-        pendingFollowupSopId: null,
-        shortStepReminderShown: false
+        startTime: `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`,
+        pendingFollowupSopId: null
       };
-    }
-    let inquiryContext = createEmptyInquiryContext();
-
-    window.resetInquiryContext = function() {
-      turnCount = 0;
-      currentSessionId = 'SESSION-' + Date.now();
-      uploadedImageBase64 = null;
-      activeGuidance = { sop: null, steps: [], currentStepIndex: 0, stepStartTime: 0 };
-      selectedCmdbAsset = null;
-      inquiryContext = createEmptyInquiryContext();
       window.updateTurnUI();
     };
 
@@ -2340,7 +2341,7 @@
         window.appendUserChat('ai', hello, false);
         window.logChatToSupabase('ai', hello);
         if (typeof window.speak === 'function') {
-          window.speak(hello);
+          window.speak(hello, () => window.startListening());
         }
 
         if (user.password === '123456') {
@@ -2387,7 +2388,7 @@
       const inputPwd = pwdInput.value.trim();
 
       if (!email) {
-        showToast("請輸入電子信箱帳號！");
+        alert("請輸入電子信箱帳號！");
         return;
       }
 
@@ -2400,7 +2401,7 @@
         if (submitBtn && submitBtn.disabled) {
           submitBtn.innerText = "登入系統";
           submitBtn.disabled = false;
-          showToast("連線逾時，請檢查網路連線或 Supabase 服務狀態！");
+          alert("連線逾時，請檢查網路連線或 Supabase 服務狀態！");
         }
       }, 5000);
 
@@ -2424,7 +2425,7 @@
 
         if (!supabaseClient) {
           clearTimeout(timeoutTimer);
-          showToast("❌ 錯誤：Supabase 客戶端尚未初始化成功！");
+          alert("❌ 錯誤：Supabase 客戶端尚未初始化成功！");
           return;
         }
 
@@ -2437,28 +2438,28 @@
         clearTimeout(timeoutTimer);
 
         if (error) {
-          showToast(`資料庫查詢錯誤：${error.message}`);
+          alert(`資料庫查詢錯誤：${error.message}`);
           return;
         }
 
         if (!data) {
-          showToast(`❌ 查無此帳號：[${email}]\n請先切換至「新用戶註冊」進行登記！`);
+          alert(`❌ 查無此帳號：[${email}]\n請先切換至「新用戶註冊」進行登記！`);
           return;
         }
 
         if (data.status === 'pending') {
-          showToast("⏳ 帳號審核中：您的註冊資料已收到，正等待管理員審核開通，開通後即可登入！");
+          alert("⏳ 帳號審核中：您的註冊資料已收到，正等待管理員審核開通，開通後即可登入！");
           return;
         }
 
         if (data.status === 'rejected') {
-          showToast("🚫 帳號停用：此帳號已被管理者停用。");
+          alert("🚫 帳號停用：此帳號已被管理者停用。");
           return;
         }
 
         const dbPassword = data.password || '123456';
         if (inputPwd !== dbPassword) {
-          showToast("❌ 密碼錯誤！新用戶預設密碼為 123456。");
+          alert("❌ 密碼錯誤！新用戶預設密碼為 123456。");
           return;
         }
 
@@ -2466,7 +2467,7 @@
       } catch (err) {
         clearTimeout(timeoutTimer);
         console.error("登入例外錯誤:", err);
-        showToast("登入過程發生異常：" + err.message);
+        alert("登入過程發生異常：" + err.message);
       } finally {
         if (submitBtn) {
           submitBtn.innerText = "登入系統";
@@ -2539,7 +2540,7 @@
 
     window.closeChangePasswordModal = function() {
       if (isForcedPasswordChange) {
-        showToast("⚠️ 為了維護資訊安全，首次登入必須完成設定新密碼！");
+        alert("⚠️ 為了維護資訊安全，首次登入必須完成設定新密碼！");
         return;
       }
       const modal = document.getElementById('changePwdModal');
@@ -2566,7 +2567,7 @@
     window.handleForgotPasswordVerify = async function(e) {
       e.preventDefault();
       if (!supabaseClient) {
-        showToast("資料庫連線尚未就緒，請稍候重試。");
+        alert("資料庫連線尚未就緒，請稍候重試。");
         return;
       }
       const emailVal = String(document.getElementById('forgotPwdEmail')?.value || '').trim().toLowerCase();
@@ -2588,17 +2589,17 @@
 
         if (error) throw error;
         if (!data) {
-          showToast("❌ 查無此帳號，請確認電子信箱是否正確。");
+          alert("❌ 查無此帳號，請確認電子信箱是否正確。");
           return;
         }
         if (data.status === 'rejected') {
-          showToast("🚫 此帳號已停用，請聯繫系統管理者。");
+          alert("🚫 此帳號已停用，請聯繫系統管理者。");
           return;
         }
         const dbPhone = String(data.phone || '').replace(/\s+/g, '');
         const inPhone = phoneVal.replace(/\s+/g, '');
         if (!dbPhone || dbPhone !== inPhone) {
-          showToast("❌ 聯絡電話／分機與註冊資料不符，請重新確認或洽系統管理者重設。");
+          alert("❌ 聯絡電話／分機與註冊資料不符，請重新確認或洽系統管理者重設。");
           return;
         }
 
@@ -2608,7 +2609,7 @@
         const titleEl = document.getElementById('changePwdModalTitle');
         if (titleEl) titleEl.innerText = `🔓 重設並變更密碼（${data.name || data.email}）`;
       } catch (err) {
-        showToast("帳號核對失敗：" + err.message);
+        alert("帳號核對失敗：" + err.message);
       } finally {
         if (btn) {
           btn.innerText = "下一步：設定新密碼";
@@ -2623,7 +2624,7 @@
       const p2 = document.getElementById('confirmPasswordInput').value.trim();
 
       if (p1 !== p2) {
-        showToast("❌ 兩次輸入的新密碼不一致！");
+        alert("❌ 兩次輸入的新密碼不一致！");
         return;
       }
 
@@ -2636,12 +2637,12 @@
       if (!c.hasSpecial) errors.push("・需包含非英文字母字元 (例如: !、$、#、%)");
 
       if (errors.length > 0) {
-        showToast(`❌ 密碼未符合複雜性規範，請修正以下項目：\n\n${errors.join('\n')}`);
+        alert(`❌ 密碼未符合複雜性規範，請修正以下項目：\n\n${errors.join('\n')}`);
         return;
       }
 
       if (p1 === '123456') {
-        showToast("❌ 新密碼不能與系統預設密碼 (123456) 相同！");
+        alert("❌ 新密碼不能與系統預設密碼 (123456) 相同！");
         return;
       }
 
@@ -2654,14 +2655,14 @@
       try {
         const targetUser = passwordRecoveryTargetUser || currentUser;
         if (!targetUser) {
-          showToast("請先登入或完成忘記密碼帳號核對。");
+          alert("請先登入或完成忘記密碼帳號核對。");
           return;
         }
 
         if (targetUser.id === 'admin-master') {
           targetUser.password = p1;
           passwordRecoveryTargetUser = null;
-          showToast("🎉 密碼已更新！");
+          alert("🎉 密碼已更新！");
           isForcedPasswordChange = false;
           const modal = document.getElementById('changePwdModal');
           if (modal) modal.classList.add('hidden');
@@ -2681,7 +2682,7 @@
         const wasRecovery = Boolean(passwordRecoveryTargetUser);
         passwordRecoveryTargetUser = null;
         isForcedPasswordChange = false;
-        showToast(
+        alert(
           wasRecovery
             ? "🎉 密碼已成功變更！請返回登入畫面使用新密碼登入。"
             : "🎉 密碼變更成功！新密碼已符合企業資安複雜度要求，下次登入請使用新密碼。"
@@ -2689,7 +2690,7 @@
         const modal = document.getElementById('changePwdModal');
         if (modal) modal.classList.add('hidden');
       } catch (err) {
-        showToast("變更密碼失敗：" + err.message);
+        alert("變更密碼失敗：" + err.message);
       } finally {
         if (btn) {
           btn.innerText = "確認儲存新密碼";
@@ -2877,127 +2878,6 @@
       return parsed.length > 0 ? parsed : [text.trim()];
     }
 
-    // ==========================================
-    // 關鍵字正規化：所有寫入 kb_solutions.keywords 的路徑皆經由此函式
-    // 支援：真正的陣列、JSON 陣列字串 ["a","b"]、Postgres 陣列字串 {a,b}、
-    //       以 換行 , ， 、 ; ； | 分隔的文字，以及先前被逗號切壞的 JSON 片段
-    // 刻意「不」以空白與斜線切分，避免拆開「Ctrl + Alt」「啟動服務/元件」「之處理 SOP」等詞
-    // ==========================================
-    const KEYWORD_SPLIT_RE = /[\r\n,，、;；|]+/;
-    const KEYWORD_MAX_LEN = 50;
-
-    function keywordDedupKey(w) {
-      return String(w || '').replace(/[\s,，、/／]/g, '').toLowerCase();
-    }
-
-    function tryParseJsonArray(str) {
-      const s = String(str || '').trim();
-      if (!s.startsWith('[') || !s.endsWith(']')) return null;
-      const candidates = [s, s.replace(/[“”]/g, '"'), s.replace(/'/g, '"')];
-      for (const c of candidates) {
-        try {
-          const v = JSON.parse(c);
-          if (Array.isArray(v)) return v;
-        } catch (_e) {}
-      }
-      return null;
-    }
-
-    function parsePgArrayLiteral(str) {
-      const s = String(str || '').trim();
-      if (!s.startsWith('{') || !s.endsWith('}')) return null;
-      const body = s.slice(1, -1);
-      if (!body.trim()) return [];
-      const out = [];
-      let cur = '', inQuote = false;
-      for (let i = 0; i < body.length; i++) {
-        const ch = body[i];
-        if (inQuote && ch === '\\' && i + 1 < body.length) { cur += body[++i]; continue; }
-        if (ch === '"') { inQuote = !inQuote; continue; }
-        if (ch === ',' && !inQuote) { out.push(cur); cur = ''; continue; }
-        cur += ch;
-      }
-      out.push(cur);
-      return out;
-    }
-
-    // 還原「JSON 陣列字串被逗號切開」的舊資料，例如 ['["忘記密碼"', '"密碼不對"]', '忘記密碼如何重設']
-    function repairSplitJsonFragments(arr) {
-      const out = [];
-      let buf = null;
-      for (const raw of arr) {
-        const e = String(raw ?? '').trim();
-        if (buf === null && e.startsWith('[') && !tryParseJsonArray(e)) {
-          buf = [e];
-          continue;
-        }
-        if (buf !== null) {
-          buf.push(e);
-          if (e.endsWith(']')) {
-            const parsed = tryParseJsonArray(buf.join(','));
-            if (parsed) out.push(...parsed); else out.push(...buf);
-            buf = null;
-          }
-          continue;
-        }
-        out.push(raw);
-      }
-      if (buf !== null) out.push(...buf);
-      return out;
-    }
-
-    function flattenKeywordInput(value, depth = 0) {
-      if (value === null || value === undefined || depth > 4) return [];
-      if (Array.isArray(value)) {
-        return repairSplitJsonFragments(value).flatMap(v => flattenKeywordInput(v, depth + 1));
-      }
-      const str = String(value).replace(/^\ufeff/, '').trim();
-      if (!str) return [];
-      const jsonArr = tryParseJsonArray(str);
-      if (jsonArr) return flattenKeywordInput(jsonArr, depth + 1);
-      const pgArr = parsePgArrayLiteral(str);
-      if (pgArr) return flattenKeywordInput(pgArr, depth + 1);
-      // 已是陣列元素（depth > 0）時視為完整關鍵字，不再切分，保留「密碼即將到期，如何更換」這類含標點的詞
-      if (depth > 0) return [str];
-      return str.split(KEYWORD_SPLIT_RE);
-    }
-
-    function cleanKeywordToken(w) {
-      return String(w ?? '')
-        .replace(/^[\s\[\]{}"'“”「」]+|[\s\[\]{}"'“”「」]+$/g, '')
-        .replace(/\\"/g, '"')
-        .replace(/\s+/g, ' ')
-        .trim();
-    }
-
-    function normalizeKeywordList(value, opts = {}) {
-      const { title = '', sopId = '', appendTitle = true } = opts;
-      const titleClean = cleanKeywordToken(title);
-      const sopIdKey = keywordDedupKey(sopId);
-      // 舊版以 / 與空白切分時會把編號拆成「SOP」等殘片，一併排除編號的英文前綴（如 SOP、ENG、DOC）
-      const sopPrefixKey = keywordDedupKey(String(sopId).split(/[-_]/)[0] || '');
-      const titleKey = keywordDedupKey(titleClean);
-      const seen = new Set();
-      if (appendTitle && titleKey) seen.add(titleKey);
-
-      const result = [];
-      for (const raw of flattenKeywordInput(value)) {
-        const w = cleanKeywordToken(raw);
-        if (!w || w.length > KEYWORD_MAX_LEN) continue;
-        const key = keywordDedupKey(w);
-        if (!key || key === sopIdKey || (sopPrefixKey && key === sopPrefixKey) || seen.has(key)) continue;
-        seen.add(key);
-        result.push(w);
-      }
-      if (appendTitle && titleClean) result.push(titleClean);
-      return result;
-    }
-
-    // 供編輯欄位顯示用：以「、」串接，與 normalizeKeywordList 的切分規則互為可逆
-    function formatKeywordsForInput(value) {
-      return normalizeKeywordList(value, { appendTitle: false }).join('、');
-    }
-
     function extractFollowupText(sop) {
       if (!sop) return '';
       if (sop.followup_questions && !sop.followup_questions.includes('無需追問')) {
@@ -3022,12 +2902,11 @@
         const targetSop = knowledgeBase.find(k => k.sop_id === sopId);
         if (!targetSop) return;
 
-        // 以 normalizeKeywordList 比對與寫入：同時修復既有被切壞的關鍵字，並避免只差在標點的重複詞
-        const existingKws = normalizeKeywordList(targetSop.keywords, { title: targetSop.title, sopId });
-        const existingKeys = new Set(existingKws.map(keywordDedupKey));
+        let currentKws = Array.isArray(targetSop.keywords) ? [...targetSop.keywords] : [targetSop.title];
+        const lowerKws = currentKws.map(k => String(k).toLowerCase());
 
-        if (!existingKeys.has(keywordDedupKey(cleanKeyword))) {
-          const currentKws = normalizeKeywordList([...existingKws, cleanKeyword], { title: targetSop.title, sopId });
+        if (!lowerKws.includes(cleanKeyword.toLowerCase())) {
+          currentKws.push(cleanKeyword);
           targetSop.keywords = currentKws;
 
           await supabaseClient
@@ -3038,26 +2917,6 @@
       } catch (err) {
         console.warn("自主學習寫入異常:", err);
       }
-    }
-
-    // 一般使用者不應自行修改登錄檔或執行系統管理指令：AI 產生的步驟若涉及這類操作就改為轉交資訊人員
-    // （伺服器端提示詞仍應加上相同限制，這裡是前端的第二道防線）
-    const ADMIN_ONLY_STEP_RE = /(regedit|登錄檔|登錄編輯|registry|命令提示字元|\bcmd\b|powershell|終端機|netsh|\bsfc\b|dism|bcdedit|diskpart|chkdsk|gpedit|群組原則|bios|uefi|格式化|format\s+[a-z]:|重灌|系統還原|安全模式|以系統管理員身分|管理員權限|停用防毒|關閉防火牆|刪除.*system32)/i;
-    function sanitizeAiStepsForRole(steps) {
-      const list = Array.isArray(steps) ? steps : [];
-      const role = currentUser && currentUser.role;
-      if (role === 'admin' || role === 'engineer') return list;
-      let replaced = false;
-      const out = [];
-      for (const step of list) {
-        if (ADMIN_ONLY_STEP_RE.test(String(step || ''))) {
-          if (!replaced) out.push('下一個建議步驟涉及系統管理設定（例如登錄檔或系統指令），請勿自行操作；若前面的步驟仍無法排除，請按「直接報修」由資訊人員協助。');
-          replaced = true;
-        } else {
-          out.push(step);
-        }
-      }
-      return out;
     }
 
     function parseGroqGeneratedSteps(rawText) {
@@ -3159,68 +3018,20 @@
       return false;
     }
 
-    // 資訊設備／軟體白名單：命中任一即放行
-    const IT_SCOPE_KEYWORDS = [
-      '電腦', '主機', '桌機', '筆電', 'nb', 'pc', '平板', 'ipad', '手機', '螢幕', '顯示器', '黑屏', '無畫面', '沒畫面', '畫面', 'hdmi', 'vga', 'dp',
-      '鍵盤', '滑鼠', '週邊', '周邊', 'usb', '藍牙', '耳機', '麥克風', '喇叭', '音效', '聲音', '攝影機', '視訊', 'webcam', '鏡頭',
-      '掃描器', '掃描', '投影機', '投影', '簡報筆', '印表機', '事務機', '影印', '傳真', '出紙', '卡紙', '碳粉', '墨水', '列印',
-      '讀卡機', '卡機', '健保卡', '醫事卡', '晶片卡', '插卡', '自然人憑證', '條碼機', '條碼', '斑馬機', '標籤機', '標籤列印機', '標籤', '貼紙',
-      '系統', '作業系統', 'windows', 'win10', 'win11', 'mac', 'his', 'pacs', 'vpn', '網路', '上網', 'wifi', 'wi-fi', '無線', 'ip', 'dns', 'dhcp', '網點', '網路線', '分享器', '交換器',
-      '帳號', '密碼', '登入', '權限', '當機', '藍屏', 'bsod', '開機', '關機', '重開', '重灌', '更新', '軟體', '程式', '應用程式', 'app', '安裝', '驅動', '憑證', 'hicos',
-      'office', 'word', 'excel', 'powerpoint', 'ppt', 'outlook', '郵件', '信箱', 'email', 'mail', 'teams', 'line', 'zoom', 'onedrive', '雲端', '共用', '資料夾', '檔案', '解壓縮', 'zip', 'pdf',
-      '瀏覽器', 'chrome', 'edge', 'firefox', '網頁', '網站', '病毒', '中毒', '防毒', '錯誤', '跳出', '閃退', '當掉', '很慢', '卡住', '連線', '伺服器', '電源', '充電', '電池'
-    ];
-    // 明顯不屬於資訊設備的項目（黑名單）：僅在完全沒有命中白名單時才拒答
-    const NON_IT_SCOPE_KEYWORDS = [
-      '冷氣', '空調', '暖氣', '電燈', '燈管', '日光燈', '門禁', '門鎖', '鑰匙', '電梯', '水龍頭', '漏水', '馬桶', '水管', '水電', '停水',
-      '電扇', '飲水機', '冰箱', '微波爐', '咖啡機', '病床', '輪椅', '桌椅', '椅子', '窗戶', '窗簾', '停車', '清潔', '垃圾', '便當', '餐廳'
-    ];
-
-    // 只在「新問題的第一句話」使用；若明確屬於黑名單且沒有任何資訊關鍵字才拒答，其餘一律放行
     function isNonItEquipmentQuery(queryText) {
       const q = String(queryText || '').toLowerCase().trim();
       if (!q) return false;
-      if (IT_SCOPE_KEYWORDS.some(k => q.includes(k))) return false;
-      return NON_IT_SCOPE_KEYWORDS.some(k => q.includes(k));
-    }
 
-    // 嚴重硬體狀況／安全風險：任何階段都優先處理
-    const SEVERE_HARDWARE_KEYWORDS = [
-      '冒煙', '焦味', '燒焦', '起火', '著火', '火花', '觸電', '漏電', '電到', '進水', '泡水', '潑到水', '打翻',
-      '斷掉', '摔壞', '摔到', '燒掉', '電池膨脹', '膨脹', '爆炸', '直接派工', '報修就好'
-    ];
-    function isSevereHardwareQuery(q) {
-      const t = String(q || '');
-      return SEVERE_HARDWARE_KEYWORDS.some(k => t.includes(k));
-    }
-
-    // 一般使用者不下載「資訊室」專用 SOP（前端減量；真正的存取控制仍需 RLS）
-    function kbAudienceFilterForCurrentUser() {
-      const role = currentUser && currentUser.role;
-      if (role === 'admin' || role === 'engineer') return 'sop_id.not.is.null';
-      return 'target_audience.is.null,target_audience.neq.資訊室';
-    }
-
-    // 知識庫快取：過期或尚未載入時才重新下載
-    async function ensureKnowledgeBaseFresh(force = false) {
-      if (!supabaseClient) return knowledgeBase;
-      const stale = !kbLastLoadedAt || (Date.now() - kbLastLoadedAt > KB_CACHE_TTL_MS);
-      if (!force && !stale && knowledgeBase.length > 0) return knowledgeBase;
-      try {
-        const { data: dbData, error: dbErr } = await supabaseClient
-          .from('kb_solutions')
-          .select('*')
-          .or(kbAudienceFilterForCurrentUser())
-          .order('sop_id', { ascending: true });
-        if (!dbErr && dbData && dbData.length > 0) {
-          knowledgeBase = dbData;
-          kbLastLoadedAt = Date.now();
-          updateKbStatusBadges();
-        }
-      } catch (err) {
-        console.warn("查詢 Supabase 異常，採用快取資料:", err);
-      }
-      return knowledgeBase;
+      // 明確限制：僅對電腦、螢幕、鍵盤、滑鼠、印表機、讀卡機、條碼機、標籤列印機、系統等資訊設備，作業系統及軟體進行故障排除引導
+      const allowedItKeywords = [
+        '電腦', '主機', '桌機', '筆電', 'nb', 'pc', '螢幕', '顯示器', '黑屏', '無畫面', '鍵盤', '滑鼠', '週邊', '周邊', 'usb',
+        '印表機', '出紙', '卡紙', '碳粉', '墨水', '列印', '讀卡機', '卡機', '健保卡', '醫事卡', '晶片卡', '插卡',
+        '條碼機', '條碼', '斑馬機', '標籤機', '標籤列印機', '標籤', '貼紙',
+        '系統', '作業系統', 'windows', 'win10', 'win11', 'his', 'vpn', '網路', 'wifi', 'wi-fi', 'ip', 'dns', 'dhcp', '網點', '網路線',
+        '帳號', '密碼', '登入', '當機', '藍屏', 'bsod', '開機', '重灌', '軟體', '應用程式', '驅動', '憑證', 'hicos'
+      ];
+      // 只要不包含上述允許之資訊設備、作業系統及軟體關鍵字，一律判定為非適用範圍，不提供故障排除引導
+      return !allowedItKeywords.some(k => q.includes(k));
     }
 
     window.handleUserSend = async function() {
@@ -3232,34 +3043,11 @@
 
       if (handleVoiceStepShortcut(q)) return;
 
-      const inGuidance = !!(activeGuidance && activeGuidance.sop && Array.isArray(activeGuidance.steps) && activeGuidance.steps.length > 0);
-      const inFollowup = !!inquiryContext.pendingFollowupSopId;
-      const isNewProblem = !inquiryContext.originalProblem;
-
-      // 1. 安全優先：冒煙、觸電、進水等狀況在任何階段都直接轉報修
-      if (isSevereHardwareQuery(q)) {
+      if (isNonItEquipmentQuery(q)) {
+        const nonItReply = "此項目不在支援範圍內，小威僅提供電腦、螢幕、鍵盤、滑鼠、印表機、讀卡機、條碼機、標籤列印機、系統等資訊設備，作業系統及軟體之故障排除引導。";
         window.appendUserChat('user', q);
         window.logChatToSupabase('user', q);
-        if (!inquiryContext.originalProblem) inquiryContext.originalProblem = q;
-        else inquiryContext.supplementaryInfo.push(q);
-        inquiryContext.userAttempts.push(q);
-        extractSlotsFromUserMsg(q);
-        inquiryContext.unresolvedReason = `硬體嚴重異常/要求直接派修：${q}`;
-        window.updateXiaoweiMood('ticket', '「偵測到硬體嚴重狀況，小威直接幫您整理好報修單了！」');
-        const urgentMsg = `收到！偵測到可能為硬體嚴重異常、觸電或進水等安全風險，<b>請立即停止使用該設備並拔除電源</b>（若有起火或觸電請先確保人身安全）。小威已為您自動彙整並產生【報修確認表單】，請檢閱送出！`;
-        window.appendUserChat('ai', urgentMsg);
-        window.logChatToSupabase('ai', urgentMsg);
-        window.speak("偵測到硬體嚴重狀況，請立即停止使用並拔除電源，已為您直接整理報修確認表單。");
-        setTimeout(() => openTicketModalPreview(), 400);
-        return;
-      }
-
-      // 2. 支援範圍判斷：只檢查新問題的第一句；追問回答、步驟回報、補充說明都不檢查
-      if (isNewProblem && !inGuidance && !inFollowup && isNonItEquipmentQuery(q)) {
-        const nonItReply = "此項目看起來不在支援範圍內，小威提供電腦、螢幕、周邊設備（鍵盤、滑鼠、耳機、攝影機、掃描器、投影機）、印表機、讀卡機、條碼機、網路，以及作業系統與 Office、Outlook、Teams、瀏覽器等軟體的故障排除引導。若是資訊相關問題，請補充設備或軟體名稱再試一次。";
-        window.appendUserChat('user', q);
-        window.logChatToSupabase('user', q);
-        window.updateXiaoweiMood('idle', '「此項目看起來不是資訊設備，小威可能幫不上忙喔。」');
+        window.updateXiaoweiMood('idle', '「此項目屬於非資訊相關設備，小威無法提供服務喔。」');
         window.appendUserChat('ai', nonItReply, false);
         window.logChatToSupabase('ai', `[非資訊設備拒答] ${nonItReply}`);
         window.speak(nonItReply);
@@ -3268,35 +3056,31 @@
 
       window.appendUserChat('user', q);
       window.logChatToSupabase('user', q);
+      turnCount++;
+      window.updateTurnUI();
 
-      if (isNewProblem) {
+      if (!inquiryContext.originalProblem) {
         inquiryContext.originalProblem = q;
       } else {
         inquiryContext.supplementaryInfo.push(q);
       }
       inquiryContext.userAttempts.push(q);
+
       extractSlotsFromUserMsg(q);
 
-      // 3. 逐步引導中：步驟回報不計入追問輪數，保留目前步驟進度
-      if (inGuidance) {
-        const curStepNum = activeGuidance.currentStepIndex + 1;
-        const totalSteps = activeGuidance.steps.length;
-        const curStepText = activeGuidance.steps[activeGuidance.currentStepIndex] || '';
-        const feedbackMsg = `已記錄您對「第 ${curStepNum}/${totalSteps} 步」的現場回覆：「${escapeHtml(q)}」。目前仍停留在<b>第 ${curStepNum}/${totalSteps} 步</b>，請確認是否已排除或進入下一步：`;
-        window.appendUserChat('ai', feedbackMsg, true, 'step_action', [], activeGuidance.sop);
-        window.logChatToSupabase('ai', `[步驟 ${curStepNum}/${totalSteps} 回覆紀錄] ${q}`);
-        window.speak(`已記錄您的回覆，目前仍在第${curStepNum}步：${curStepText}。請問問題是否已解決？`);
-        return;
+      if (inquiryContext.pendingFollowupSopId) {
+        const pendingSop = knowledgeBase.find(k => k.sop_id === inquiryContext.pendingFollowupSopId);
+        inquiryContext.pendingFollowupSopId = null;
+        if (pendingSop) {
+          window.proceedGuidanceSteps(pendingSop.sop_id);
+          return;
+        }
       }
 
-      // 4. 追問輪數只計算「問題描述／追問回答」
-      turnCount++;
-      window.updateTurnUI();
-
       const isEngineerRole = currentUser && currentUser.role === 'engineer';
-      if (!isEngineerRole && turnCount > MAX_TURNS) {
+      if (!isEngineerRole && turnCount >= MAX_TURNS) {
         inquiryContext.unresolvedReason = `已達追問上限（${MAX_TURNS} 輪）仍未排除，轉由報修流程處理`;
-        window.updateXiaoweiMood('ticket', `「已達 ${MAX_TURNS} 輪排查上限，小威已為您整理好報修表單！」`);
+        window.updateXiaoweiMood('ticket', '「已達 5 輪排查上限，小威已為您整理好報修表單！」');
         const limitMsg = `本次排查已達 <b>${MAX_TURNS} 輪上限</b>，為避免耽誤您的作業，小威已將目前對話與排查紀錄帶入【報修確認表單】，請檢閱並送出！`;
         window.appendUserChat('ai', limitMsg, false);
         window.logChatToSupabase('ai', limitMsg);
@@ -3304,34 +3088,52 @@
         return;
       }
 
-      const activeSops = await ensureKnowledgeBaseFresh();
-      const combinedQuery = [inquiryContext.originalProblem, ...inquiryContext.supplementaryInfo].join(' ');
-
-      // 5. 追問的回答：併入查詢重新評分，若有明顯更符合的 SOP 就切換
-      if (inFollowup) {
-        const pendingId = inquiryContext.pendingFollowupSopId;
-        inquiryContext.pendingFollowupSopId = null;
-        const pendingSop = activeSops.find(k => k.sop_id === pendingId);
-        const rescored = findBestSopMatches(combinedQuery, activeSops);
-        inquiryContext.retrievedCandidates = rescored.slice(0, 3);
-        const pendingScore = (rescored.find(m => m.item.sop_id === pendingId) || {}).score || 0;
-        const top = rescored[0];
-        const SWITCH_MARGIN = 10;
-        if (top && top.item.sop_id !== pendingId && top.score >= 28 && top.score - pendingScore >= SWITCH_MARGIN) {
-          const switchMsg = `依您的補充說明，小威改用更符合的排除指引：<b>[${escapeHtml(top.item.sop_id)}] ${escapeHtml(top.item.title || '')}</b>`;
-          window.appendUserChat('ai', switchMsg, false);
-          window.logChatToSupabase('ai', `[追問後切換 SOP] ${pendingId} -> ${top.item.sop_id}`);
-          window.proceedGuidanceSteps(top.item.sop_id);
-          return;
-        }
-        if (pendingSop) {
-          window.proceedGuidanceSteps(pendingSop.sop_id);
-          return;
-        }
+      // 若目前正在執行逐步故障排除測試（activeGuidance.steps 進行中），且使用者回答不在快捷指令集中：
+      // 保留目前測試步驟進度，將使用者現場回饋納入補充紀錄並重新提示目前步驟（不跳回第 1 步）
+      if (activeGuidance && activeGuidance.sop && Array.isArray(activeGuidance.steps) && activeGuidance.steps.length > 0) {
+        const curStepNum = activeGuidance.currentStepIndex + 1;
+        const totalSteps = activeGuidance.steps.length;
+        const curStepText = activeGuidance.steps[activeGuidance.currentStepIndex] || '';
+        const feedbackMsg = `已記錄您對「第 ${curStepNum}/${totalSteps} 步」的現場回覆：「${q}」。目前仍停留在<b>第 ${curStepNum}/${totalSteps} 步</b>，請確認是否已排除或進入下一步：`;
+        window.appendUserChat('ai', feedbackMsg, true, 'step_action', [], activeGuidance.sop);
+        window.logChatToSupabase('ai', `[步驟 ${curStepNum}/${totalSteps} 回覆紀錄] ${q}`);
+        window.speak(`已記錄您的回覆，目前仍在第${curStepNum}步：${curStepText}。請問問題是否已解決？`, () => window.startListening());
+        return;
       }
 
-      window.updateXiaoweiMood('thinking', `「收到！小威正在檢索知識庫並準備用 AI 找解法...」`);
+      window.updateXiaoweiMood('thinking', `「收到！小威正在檢索知識庫並準備用 Groq AI 找解法...」`);
 
+      const isSevereHardware = (q.includes('冒煙') || q.includes('焦味') || q.includes('斷掉') || q.includes('摔壞') || q.includes('燒掉') || q.includes('電池膨脹') || q.includes('直接派工') || q.includes('報修就好'));
+      if (isSevereHardware) {
+        inquiryContext.unresolvedReason = `硬體嚴重異常/要求直接派修：${q}`;
+        window.updateXiaoweiMood('ticket', '「偵測到硬體嚴重狀況，小威直接幫您整理好報修單了！」');
+        const urgentMsg = `收到！偵測到可能為硬體嚴重異常或零件損毀，請立即停止使用該設備。小威已為您自動彙整並產生【報修確認表單】，請檢閱送出！`;
+        window.appendUserChat('ai', urgentMsg);
+        window.logChatToSupabase('ai', urgentMsg);
+        window.speak("偵測到硬體嚴重狀況，已為您直接整理報修確認表單。");
+        setTimeout(() => openTicketModalPreview(), 400);
+        return;
+      }
+
+      let activeSops = knowledgeBase;
+      try {
+        if (supabaseClient) {
+          const { data: dbData, error: dbErr } = await supabaseClient
+            .from('kb_solutions')
+            .select('*')
+            .order('sop_id', { ascending: true });
+
+          if (!dbErr && dbData && dbData.length > 0) {
+            activeSops = dbData;
+            knowledgeBase = dbData;
+            updateKbStatusBadges();
+          }
+        }
+      } catch (err) {
+        console.warn("查詢 Supabase 異常，採用快取資料:", err);
+      }
+
+      const combinedQuery = [inquiryContext.originalProblem, ...inquiryContext.supplementaryInfo].join(' ');
       const matches = findBestSopMatches(combinedQuery, activeSops);
       inquiryContext.retrievedCandidates = matches.slice(0, 3);
 
@@ -3366,7 +3168,7 @@
       const text = "使用者表示皆非預設的候選問題";
       inquiryContext.supplementaryInfo.push(text);
       window.logChatToSupabase('user', text);
-      const reply = '請您再多補充一些細節（例如設備型號、錯誤訊息文字、或受影響範圍），小威會重新為您比對與分析！';
+      const reply = '請您再多補充一些細節（例如設備型號、錯誤訊息文字、或受影響範圍），小威為您重新比對並請 Groq AI 協助分析！';
       window.appendUserChat('ai', reply);
       window.logChatToSupabase('ai', reply);
       window.speak("請您再多補充一些細節，我為您重新分析。");
@@ -3420,7 +3222,7 @@
           `;
           window.appendUserChat('ai', probeHtml, false, 'followup_probe', [sop], sop);
           window.logChatToSupabase('ai', `追問確認 [${sop.sop_id}]: ${followupQ}`);
-          window.speak(`先跟您確認一下：${followupQ}。您可以按麥克風按鈕用語音回覆。`);
+          window.speak(`先跟您確認一下：${followupQ}。您可以直接用語音回覆。`, () => window.startListening());
           return;
         }
 
@@ -3450,16 +3252,16 @@
         return;
       }
 
-      window.updateXiaoweiMood('thinking', '「知識庫沒有直接的答案，小威正在請 AI 協助找解決方法...」');
+      window.updateXiaoweiMood('thinking', '「知識庫無直接答案，小威正請 Groq AI 尋找解決方法...」');
 
       const groqResult = await askGroqForTroubleshooting(combinedQuery, inquiryContext.retrievedCandidates, isDef);
 
       if (groqResult && groqResult.match_status === 'NO_MATCH') {
         const hasLlmGuidance = Boolean((groqResult.steps && groqResult.steps.length > 0) || (groqResult.text && String(groqResult.text).trim()));
         if (hasLlmGuidance) {
-          const llmSteps = sanitizeAiStepsForRole((Array.isArray(groqResult.steps) && groqResult.steps.length > 0)
+          const llmSteps = (Array.isArray(groqResult.steps) && groqResult.steps.length > 0)
             ? groqResult.steps
-            : parseGroqGeneratedSteps(groqResult.text));
+            : parseGroqGeneratedSteps(groqResult.text);
           const llmSopObj = {
             sop_id: 'GROQ-SYMPTOM',
             title: `LLM 排查引導（知識庫無命中）：${inquiryContext.originalProblem.slice(0, 24) || '問題診斷'}`,
@@ -3479,7 +3281,7 @@
         }
 
         window.updateXiaoweiMood('thinking', '「已核准知識庫查無直接命中條目，小威為您標示無命中並提供一般排查參考。」');
-        const noMatchNotice = `知識庫中沒有找到相符的處理指引。以下是 <b>AI 建議（未經資訊室審核）</b>的一般初步檢查方向，僅供參考：`;
+        const noMatchNotice = `查無已核准 SOP 命中（<b>match_status: NO_MATCH</b>），未冒充知識庫命中使用者問題。以下為一般初步檢查方向（僅供參考，非既有 SOP 條目）：`;
         const fallbackSteps = buildSymptomTroubleshootingSteps(combinedQuery);
         const noMatchObj = {
           sop_id: 'NO_MATCH',
@@ -3499,28 +3301,24 @@
 
       if (groqResult && groqResult.text) {
         if (isDef) {
-          window.updateXiaoweiMood('step', '「小威幫您整理好說明囉！」');
+          window.updateXiaoweiMood('step', '「Groq AI 幫您整理好說明囉！」');
           const defHtml = `
             <div class="bg-amber-50/90 p-3 rounded-xl border border-amber-300 text-slate-800 text-xs leading-relaxed shadow-sm">
               <span class="font-bold text-amber-950 flex items-center gap-1 mb-1">
-                <span>⚡</span> AI 建議說明（未經審核）
+                <span>⚡</span> Groq AI 智能解答
               </span>
-              ${escapeHtml(groqResult.text).replace(/\n/g, '<br>')}
+              ${groqResult.text.replace(/\n/g, '<br>')}
             </div><br>
             請問上述說明是否已解答您的疑問？
           `;
           window.appendUserChat('ai', defHtml, true, 'definition_action');
           window.logChatToSupabase('ai', `Groq AI 解答: ${groqResult.text}`);
-          window.speak("已為您整理說明，請問是否解答您的疑問？");
+          window.speak("已透過 Groq AI 為您整理說明，請問是否解答您的疑問？");
         } else {
           window.updateXiaoweiMood('step', '「已依據知識庫與 AI 分析整理排查步驟，我們一步一步試試看！」');
-          const rawDynamicSteps = (Array.isArray(groqResult.steps) && groqResult.steps.length > 0)
+          const dynamicSteps = (Array.isArray(groqResult.steps) && groqResult.steps.length > 0)
             ? groqResult.steps
             : parseGroqGeneratedSteps(groqResult.text);
-          // 未對應到已審核 SOP 的 AI 步驟才需要過濾
-          const dynamicSteps = (groqResult.matched_sop && groqResult.matched_sop.sop_id)
-            ? rawDynamicSteps
-            : sanitizeAiStepsForRole(rawDynamicSteps);
           const matchedRefSop = groqResult.matched_sop && groqResult.matched_sop.sop_id
             ? groqResult.matched_sop
             : null;
@@ -3542,7 +3340,7 @@
             currentStepIndex: 0
           };
 
-          const introMsg = `知識庫目前無完全相符條目，小威已請 AI 為您擬定 <b>${dynamicSteps.length} 項建議排查步驟（未經資訊室審核）</b>，我們先試試看：`;
+          const introMsg = `知識庫目前無完全相符條目，小威已請 <b>Groq AI</b> 為您擬定 <b>${dynamicSteps.length} 項解決排查步驟</b>，我們先試試看：`;
           window.appendUserChat('ai', introMsg);
           setTimeout(() => presentCurrentStep(), 300);
         }
@@ -3588,7 +3386,7 @@
 
       window.appendUserChat('ai', stepPrompt, true, 'step_action', [], sop);
       window.logChatToSupabase('ai', `測試步驟 [${sop.sop_id}] (${currentStepIndex + 1}/${total})：${stepContent}`);
-      window.speak(`測試步驟第${currentStepIndex + 1}步：${stepContent}。請問完成後問題是否解決？您可以按麥克風按鈕說已排除或下一步。`);
+      window.speak(`測試步驟第${currentStepIndex + 1}步：${stepContent}。請問完成後問題是否解決？您可以直接說已排除或下一步。`, () => window.startListening());
     }
 
     window.handleStepResolved = function(isResolved) {
@@ -3606,14 +3404,14 @@
         activeGuidance = { sop: null, steps: [], currentStepIndex: 0 };
       } else {
         const elapsedSec = activeGuidance.stepStartTime ? Math.round((Date.now() - activeGuidance.stepStartTime) / 1000) : 999;
-        // 每次對話只提醒一次，避免使用者已完成步驟仍被反覆要求再按一次
-        if (elapsedSec < 5 && !inquiryContext.shortStepReminderShown) {
-          inquiryContext.shortStepReminderShown = true;
+        if (elapsedSec < 5 && !activeGuidance._bypassShortTimer) {
+          activeGuidance._bypassShortTimer = true;
           const warnMsg = `⏱️ 目前執行此步驟僅經過 <b>${elapsedSec} 秒</b>（未滿 5 秒）。看起來您可能尚未完成此步驟，若確認要進入下一步，請再點一次「❌ 未排除，下一條測試」或說「下一步」。`;
           window.appendUserChat('ai', warnMsg, true, 'step_action', [], activeGuidance.sop);
           window.logChatToSupabase('ai', `[短時提醒 ${elapsedSec}s] ${warnMsg}`);
           return;
         }
+        activeGuidance._bypassShortTimer = false;
         activeGuidance.currentStepIndex++;
 
         if (activeGuidance.currentStepIndex < activeGuidance.steps.length) {
@@ -3627,22 +3425,22 @@
           // 知識庫既有 SOP 步驟皆未排除時，自動轉請 Groq AI 深度分析並提供進階排查步驟
           const prevSopId = activeGuidance.sop?.sop_id || 'SOP';
           const prevSopTitle = activeGuidance.sop?.title || inquiryContext.originalProblem;
-          window.updateXiaoweiMood('thinking', '「知識庫的基本步驟還沒排除問題，小威正在請 AI 進一步找方法...」');
-          const escalateAiNotice = `知識庫 <b>[${prevSopId}]</b> 的基本步驟均未能排除，小威正在請 AI 針對「${escapeHtml(inquiryContext.originalProblem)}」尋找進階解決方法...`;
+          window.updateXiaoweiMood('thinking', '「知識庫基本步驟尚未排除，小威正請 Groq AI 進一步尋找解決方法...」');
+          const escalateAiNotice = `知識庫 <b>[${prevSopId}]</b> 的基本步驟均未能排除，小威正為您轉請 <b>Groq AI</b> 針對「${inquiryContext.originalProblem}」尋找進階解決方法...`;
           window.appendUserChat('ai', escalateAiNotice);
           window.logChatToSupabase('ai', escalateAiNotice);
 
           (async () => {
             const deepQuery = `使用者問題：${inquiryContext.originalProblem}。已嘗試知識庫 [${prevSopId}] ${prevSopTitle} 的所有基本步驟但仍未排除（已測試：${inquiryContext.suggestedSteps.join('；')}）。請提供 3 個不同角度的進階排查或解決步驟。`;
             const groqRes = await askGroqForTroubleshooting(deepQuery, inquiryContext.retrievedCandidates, false);
-            const extraSteps = sanitizeAiStepsForRole((groqRes && Array.isArray(groqRes.steps) && groqRes.steps.length > 0)
+            const extraSteps = (groqRes && Array.isArray(groqRes.steps) && groqRes.steps.length > 0)
               ? groqRes.steps
-              : (groqRes && groqRes.text ? parseGroqGeneratedSteps(groqRes.text) : []));
+              : (groqRes && groqRes.text ? parseGroqGeneratedSteps(groqRes.text) : []);
 
             if (extraSteps.length > 0) {
               const aiSopObj = {
                 sop_id: 'GROQ-DEEP',
-                title: `AI 進階排查建議：${inquiryContext.originalProblem.slice(0, 26)}`,
+                title: `Groq AI 進階排查：${inquiryContext.originalProblem.slice(0, 26)}`,
                 status: 'AI建議',
                 urgency: inquiryContext.isMajorIncident ? 'P1' : 'P2',
                 escalate_dept: activeGuidance.sop?.escalate_dept || '維護工程組',
@@ -3666,9 +3464,9 @@
             }
           })();
         } else {
-          inquiryContext.unresolvedReason = `已依序執行知識庫與 AI 建議的全部排查步驟，均未能排除故障`;
+          inquiryContext.unresolvedReason = `已依序執行知識庫與 Groq AI 全部排查步驟均未能排除故障`;
           window.updateXiaoweiMood('ticket', '「所有步驟均已試畢，小威已為您填妥報修單！」');
-          const allExhaustedMsg = `針對此問題的知識庫與 AI 建議排查步驟均已嘗試完畢，仍無法恢復正常。小威已自動將測試歷程彙整至【報修確認表單】，請檢閱確認送出！`;
+          const allExhaustedMsg = `針對此問題的知識庫與 Groq AI 進階排查步驟均已嘗試完畢，仍無法恢復正常。小威已自動將測試歷程彙整至【報修確認表單】，請檢閱確認送出！`;
           window.appendUserChat('ai', allExhaustedMsg, false);
           window.logChatToSupabase('ai', allExhaustedMsg);
           window.speak("所有測試步驟均已嘗試完畢，正為您產出報修案件。");
@@ -3678,23 +3476,6 @@
         }
       }
     };
-
-    // 只擷取明確格式的錯誤代碼，避免把 HDMI、Outlook 等一般英文字誤判為代碼
-    function extractErrorCode(text) {
-      const t = String(text || '');
-      const patterns = [
-        /(?:錯誤代碼|錯誤碼|代碼|error\s*code|stop\s*code)\s*[:：#]?\s*([A-Za-z0-9_\-]{2,40})/i, // 錯誤代碼：xxx
-        /\b(0x[0-9A-Fa-f]{8})\b/,                                   // 0x0000007B
-        /\b([A-Z][A-Z0-9]*(?:_[A-Z0-9]+){1,})\b/,                     // CRITICAL_PROCESS_DIED
-        /\b((?:HTTP\s*)?[45]\d{2})\s*(?:錯誤|error)/i,                    // 404 錯誤
-        /\b(E\d{2,5}|ERR[-_]?\d{2,6})\b/i                                   // E05、ERR-1024
-      ];
-      for (const re of patterns) {
-        const m = t.match(re);
-        if (m && m[1]) return m[1].trim();
-      }
-      return '';
-    }
 
     function extractSlotsFromUserMsg(text) {
       const lower = String(text).toLowerCase();
@@ -3721,9 +3502,9 @@
         inquiryContext.categoryType = 'NETWORK';
       }
 
-      if (!inquiryContext.errorCode) {
-        const code = extractErrorCode(text);
-        if (code) inquiryContext.errorCode = code;
+      const errMatch = text.match(/([a-zA-Z0-9_\-]{4,15}|錯誤代碼\s*[:：]?\s*[a-zA-Z0-9]+)/);
+      if (errMatch && !inquiryContext.errorCode) {
+        inquiryContext.errorCode = errMatch[0];
       }
 
       const locMatch = text.match(/([0-9]+[fF樓]|第[0-9]+診|[0-9]+診間|[a-zA-Z0-9]+護理站|辦公室|廠區|櫃台)/);
@@ -3735,24 +3516,6 @@
     // ==========================================
     // K. 精簡 7 欄位報修確認表單控制
     // ==========================================
-    function generateTicketId(now = new Date()) {
-      const ts = now.getFullYear().toString() +
-        String(now.getMonth() + 1).padStart(2, '0') +
-        String(now.getDate()).padStart(2, '0') +
-        String(now.getHours()).padStart(2, '0') +
-        String(now.getMinutes()).padStart(2, '0') +
-        String(now.getSeconds()).padStart(2, '0');
-      let rand = '';
-      if (window.crypto && typeof window.crypto.randomUUID === 'function') {
-        rand = window.crypto.randomUUID().replace(/-/g, '').slice(0, 8);
-      } else if (window.crypto && window.crypto.getRandomValues) {
-        rand = Array.from(window.crypto.getRandomValues(new Uint8Array(4)), b => b.toString(16).padStart(2, '0')).join('');
-      } else {
-        rand = Math.random().toString(16).slice(2, 10);
-      }
-      return `TK-${ts}-${rand.toUpperCase()}`;
-    }
-
     function openTicketModalPreview() {
       const now = new Date();
       const currentTimeStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
@@ -3820,7 +3583,7 @@ ${stepsText}
     window.confirmSubmitTicket = async function() {
       if (isSubmittingTicket) return;
       if (!supabaseClient) {
-        showToast("資料庫連線尚未就緒，報修資料已保留於表單中，請稍候重試。");
+        alert("資料庫連線尚未就緒，報修資料已保留於表單中，請稍候重試。");
         return;
       }
 
@@ -3828,12 +3591,12 @@ ${stepsText}
       const phoneVal = document.getElementById('simple_phone').value.trim();
 
       if (!locationVal) {
-        showToast("請填寫【所在位置】(例如：3F 門診第 5 診間)，以利工程師快速到場！");
+        alert("請填寫【所在位置】(例如：3F 門診第 5 診間)，以利工程師快速到場！");
         document.getElementById('simple_location').focus();
         return;
       }
       if (!phoneVal) {
-        showToast("請填寫【聯絡電話 / 分機】，以利工程師回電聯繫！");
+        alert("請填寫【聯絡電話 / 分機】，以利工程師回電聯繫！");
         document.getElementById('simple_phone').focus();
         return;
       }
@@ -3846,8 +3609,12 @@ ${stepsText}
       }
 
       const now = new Date();
-      // 單號 = 時間戳記 + 隨機尾碼，避免同一秒多人送出時衝突（資料庫端仍建議對 service_id 加 UNIQUE）
-      const sId = generateTicketId(now);
+      const sId = 'TK-' + now.getFullYear().toString() + 
+                  String(now.getMonth() + 1).padStart(2, '0') + 
+                  String(now.getDate()).padStart(2, '0') + 
+                  String(now.getHours()).padStart(2, '0') + 
+                  String(now.getMinutes()).padStart(2, '0') + 
+                  String(now.getSeconds()).padStart(2, '0').slice(-2);
 
       const isP1 = inquiryContext.isMajorIncident || (inquiryContext.matchedSop && inquiryContext.matchedSop.urgency === 'P1');
       const assignedDept = inquiryContext.matchedSop?.escalate_dept || '資訊服務處';
@@ -3909,7 +3676,7 @@ ${stepsText}
         }
       } catch (err) {
         console.error("建單錯誤:", err);
-        showToast("工單寫入 Supabase 失敗：" + err.message);
+        alert("工單寫入 Supabase 失敗：" + err.message);
       } finally {
         isSubmittingTicket = false;
         if (confirmBtn) {
@@ -3925,7 +3692,7 @@ ${stepsText}
     window.handleRegisterSubmit = async function(e) {
       e.preventDefault();
       if (!supabaseClient) {
-        showToast("資料庫連線尚未就緒，請稍候重試。");
+        alert("資料庫連線尚未就緒，請稍候重試。");
         return;
       }
 
@@ -3960,10 +3727,10 @@ ${stepsText}
 
         document.getElementById('registerForm').reset();
         document.getElementById('pendingReviewBanner').classList.remove('hidden');
-        showToast("✅ 註冊成功！資料已成功寫入 Supabase，預設密碼為 123456，請等待管理者審核開通！");
+        alert("✅ 註冊成功！資料已成功寫入 Supabase，預設密碼為 123456，請等待管理者審核開通！");
       } catch (err) {
         console.error("註冊失敗:", err);
-        showToast("註冊失敗：" + (err.message || "信箱可能重複或資料表未開通權限"));
+        alert("註冊失敗：" + (err.message || "信箱可能重複或資料表未開通權限"));
       } finally {
         if (submitBtn) {
           submitBtn.innerText = "送出註冊 (等待審核)";
@@ -4036,12 +3803,12 @@ ${stepsText}
 
     window.openEditUserModal = function(userId) {
       if (!currentUser || currentUser.role !== 'admin') {
-        showToast("⛔ 權限不足：僅系統管理者可修改使用者帳號與權限！");
+        alert("⛔ 權限不足：僅系統管理者可修改使用者帳號與權限！");
         return;
       }
       const target = adminProfilesCache.find(u => String(u.id) === String(userId));
       if (!target) {
-        showToast("找不到該筆帳號資料，請先重新整理清單。");
+        alert("找不到該筆帳號資料，請先重新整理清單。");
         return;
       }
 
@@ -4067,11 +3834,11 @@ ${stepsText}
     window.handleSaveUserEditSubmit = async function(e) {
       e.preventDefault();
       if (!currentUser || currentUser.role !== 'admin') {
-        showToast("⛔ 權限不足：僅系統管理者可儲存帳號與權限修改！");
+        alert("⛔ 權限不足：僅系統管理者可儲存帳號與權限修改！");
         return;
       }
       if (!supabaseClient) {
-        showToast("資料庫連線尚未就緒。");
+        alert("資料庫連線尚未就緒。");
         return;
       }
 
@@ -4115,14 +3882,14 @@ ${stepsText}
 
         if (error) throw error;
 
-        showToast(`🎉 已更新帳號 [${nameVal}] 的資料與權限！`);
+        alert(`🎉 已更新帳號 [${nameVal}] 的資料與權限！`);
         window.closeEditUserModal();
         window.fetchUsersFromSupabase();
         if (typeof window.fetchSageIncidentsFromSupabase === 'function') {
           window.fetchSageIncidentsFromSupabase();
         }
       } catch (err) {
-        showToast("儲存帳號修改失敗：" + err.message);
+        alert("儲存帳號修改失敗：" + err.message);
       } finally {
         if (btn) {
           btn.innerText = "💾 儲存帳號與權限";
@@ -4133,7 +3900,7 @@ ${stepsText}
 
     window.approveUserInSupabase = async function(id, name) {
       if (!currentUser || currentUser.role !== 'admin') {
-        showToast("⛔ 權限不足：維護工程師無帳號權限審核權限！");
+        alert("⛔ 權限不足：維護工程師無帳號權限審核權限！");
         return;
       }
       if (!supabaseClient) return;
@@ -4144,16 +3911,16 @@ ${stepsText}
           .eq('id', id);
 
         if (error) throw error;
-        showToast(`已核准 [${name}] 的存取權限！`);
+        alert(`已核准 [${name}] 的存取權限！`);
         window.fetchUsersFromSupabase();
       } catch (err) {
-        showToast("審核失敗：" + err.message);
+        alert("審核失敗：" + err.message);
       }
     };
 
     window.updateUserRoleInSupabase = async function(id, newRole) {
       if (!currentUser || currentUser.role !== 'admin') {
-        showToast("⛔ 權限不足：維護工程師無帳號權限調整權限！");
+        alert("⛔ 權限不足：維護工程師無帳號權限調整權限！");
         window.fetchUsersFromSupabase();
         return;
       }
@@ -4165,9 +3932,9 @@ ${stepsText}
           .eq('id', id);
 
         if (error) throw error;
-        showToast("權限調整成功！");
+        alert("權限調整成功！");
       } catch (err) {
-        showToast("權限修改失敗：" + err.message);
+        alert("權限修改失敗：" + err.message);
       }
     };
 
@@ -4197,12 +3964,10 @@ ${stepsText}
         const { data, error } = await supabaseClient
           .from('kb_solutions')
           .select('*')
-          .or(kbAudienceFilterForCurrentUser())
           .order('sop_id', { ascending: true });
 
         if (error) throw error;
         knowledgeBase = data || [];
-        kbLastLoadedAt = Date.now();
         updateKbStatusBadges();
         renderKbList();
       } catch (err) {
@@ -4289,18 +4054,18 @@ ${stepsText}
         if (error) throw error;
         window.fetchKbFromSupabase();
       } catch (err) {
-        showToast("刪除失敗：" + err.message);
+        alert("刪除失敗：" + err.message);
       }
     };
 
     window.approveAllDraftSopInSupabase = async function() {
       if (!supabaseClient) {
-        showToast("資料庫連線尚未就緒，請稍候重試。");
+        alert("資料庫連線尚未就緒，請稍候重試。");
         return;
       }
       const targets = (knowledgeBase || []).filter(k => k && k.sop_id && k.status !== '已審核');
       if (targets.length === 0) {
-        showToast("目前知識庫條目已全部為「已審核」狀態！");
+        alert("目前知識庫條目已全部為「已審核」狀態！");
         return;
       }
       if (!confirm(`確定要將目前 ${targets.length} 筆非「已審核」之 SOP 狀態全部更新為「已審核」嗎？`)) {
@@ -4327,10 +4092,10 @@ ${stepsText}
             .upsert(chunk, { onConflict: 'sop_id' });
           if (error) throw error;
         }
-        showToast(`🎉 已將 ${targets.length} 筆 SOP 狀態更新為「已審核」！`);
+        alert(`🎉 已將 ${targets.length} 筆 SOP 狀態更新為「已審核」！`);
         await window.fetchKbFromSupabase();
       } catch (err) {
-        showToast("❌ 批次更新失敗：" + err.message);
+        alert("❌ 批次更新失敗：" + err.message);
       } finally {
         if (btn) {
           btn.innerText = "✅ 全部改為已審核";
@@ -4360,7 +4125,7 @@ ${stepsText}
         const initStatus = isEngineer && item.status === '已審核' ? '草稿待審' : (item.status || '草稿待審');
         document.getElementById('edit_sop_status').value = initStatus;
         document.getElementById('edit_sop_title').value = item.title || '';
-        document.getElementById('edit_sop_keywords').value = formatKeywordsForInput(item.keywords);
+        document.getElementById('edit_sop_keywords').value = Array.isArray(item.keywords) ? item.keywords.join(', ') : (item.keywords || '');
         document.getElementById('edit_sop_followup').value = item.followup_questions || '';
         document.getElementById('edit_sop_steps').value = item.safe_steps || item.steps || '';
         document.getElementById('edit_sop_audience').value = item.target_audience || '使用者';
@@ -4409,7 +4174,7 @@ ${stepsText}
       const category = document.getElementById('edit_sop_category').value.trim();
       let status = document.getElementById('edit_sop_status').value;
       if ((!currentUser || currentUser.role !== 'admin') && status === '已審核') {
-        showToast("⛔ 權限不足：維護工程師無 SOP 審核權限，將以「草稿待審」儲存送審！");
+        alert("⛔ 權限不足：維護工程師無 SOP 審核權限，將以「草稿待審」儲存送審！");
         status = '草稿待審';
       }
       const kwStr = document.getElementById('edit_sop_keywords').value.trim();
@@ -4419,7 +4184,8 @@ ${stepsText}
       const urgency = document.getElementById('edit_sop_urgency').value;
       const allowSelf = document.getElementById('edit_sop_self_resolve').value === 'true';
 
-      const keywords = normalizeKeywordList(kwStr, { title, sopId });
+      let keywords = kwStr.split(/[,，、/ \t\n]+/).map(s => s.trim()).filter(Boolean);
+      if (!keywords.includes(title)) keywords.push(title);
 
       const nowStr = new Date().toISOString().slice(0, 10);
 
@@ -4446,11 +4212,11 @@ ${stepsText}
 
         if (error) throw error;
 
-        showToast(`🎉 [${sopId}] 知識庫條目儲存成功（狀態：${status}）！`);
+        alert(`🎉 [${sopId}] 知識庫條目儲存成功（狀態：${status}）！`);
         closeEditSopModal();
         window.fetchKbFromSupabase();
       } catch (err) {
-        showToast("儲存失敗：" + err.message);
+        alert("儲存失敗：" + err.message);
       } finally {
         btn.innerText = "💾 儲存更新至 Supabase";
         btn.disabled = false;
@@ -4662,18 +4428,65 @@ ${stepsText}
           }
         }
       } catch (e) {
-        console.warn('Edge Function parse_sop_doc 逾時或未啟用:', e);
+        console.warn('Edge Function parse_sop_doc 逾時或未啟用，改由 Groq 直連結構化轉換:', e);
       }
 
-      // 不在前端直連 Groq（金鑰不可放在瀏覽器端）；Edge Function 失敗時改以原文建立單筆草稿並明確提示
-      showToast(`「${file.name}」的 AI 結構化轉換服務暫時無法使用，已改以文件原文建立一筆資料，請於預覽中手動整理步驟與關鍵字。`, 'warn', 7000);
+      // Edge Function 尚未部署時的直連 Groq 結構化轉換備援
+      const prompt = `請將以下 SOP 文件內容（檔名：${file.name}）整理為知識庫 JSON 陣列（只輸出純 JSON）：
+{"records":[{"sop_id":"DOC-001","category":"大類-子類","title":"設備或系統|異常現象:處理方式","keywords":["關鍵字1","關鍵字2","關鍵字3"],"followup_questions":"排查確認問句","safe_steps":"1. 步驟一\n2. 步驟二","escalation":"升級條件","urgency":"P2","allow_self_resolve":true}]}
+
+文件內容：
+${extractedText.slice(0, 11000)}`;
+
+      try {
+        const gRes = await fetchWithTimeout(GROQ_DIRECT_URL, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${DEFAULT_GROQ_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: 'openai/gpt-oss-120b',
+            messages: [
+              { role: 'system', content: '你是 IT 知識庫轉換助手，嚴格只輸出合法 JSON 物件。' },
+              { role: 'user', content: prompt }
+            ],
+            temperature: 0.15,
+            max_tokens: 1800
+          })
+        }, 12000);
+
+        if (gRes.ok) {
+          const gData = await gRes.json();
+          const raw = String(gData.choices?.[0]?.message?.content || '').trim();
+          const cleaned = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+          const m = cleaned.match(/\{[\s\S]*\}/);
+          const parsed = JSON.parse(m ? m[0] : cleaned);
+          if (parsed && Array.isArray(parsed.records) && parsed.records.length > 0) {
+            return parsed.records.map((r, idx) => ({
+              sop_id: String(r.sop_id || `DOC-${Date.now().toString().slice(-4)}-${idx + 1}`).trim(),
+              category: String(r.category || '匯入文件-操作指引').trim(),
+              title: String(r.title || file.name).trim(),
+              keywords: Array.isArray(r.keywords) ? r.keywords.map(String).filter(Boolean) : [file.name],
+              followup_questions: r.followup_questions || null,
+              safe_steps: String(r.safe_steps || extractedText.slice(0, 1000)).trim(),
+              escalation: String(r.escalation || '若仍無法排除請轉派二線工程師').trim(),
+              urgency: ['P1', 'P2', 'P3'].includes(String(r.urgency || '').toUpperCase()) ? String(r.urgency).toUpperCase() : 'P2',
+              allow_self_resolve: r.allow_self_resolve !== false,
+              status: defaultStatus,
+              target_audience: defaultAudience,
+              source: `文件匯入:${file.name}`
+            }));
+          }
+        }
+      } catch (_err) {}
 
       const baseTitle = file.name.replace(/\.[^.]+$/, '');
       return [{
         sop_id: `DOC-${Date.now().toString().slice(-6)}`,
         category: '匯入文件-操作指引',
         title: baseTitle,
-        keywords: [baseTitle, '操作指引'],
+        keywords: [baseTitle, 'SOP', '操作指引'],
         followup_questions: null,
         safe_steps: extractedText.slice(0, 1500),
         escalation: '若依步驟操作仍異常，請轉派資深工程師',
@@ -4729,8 +4542,8 @@ ${stepsText}
             </div>
             <div>
               <label class="block text-[10px] font-bold text-slate-500">檢索關鍵字（逗號分隔）</label>
-              <input type="text" value="${escapeHtml(formatKeywordsForInput(r.keywords))}"
-                     onchange="pendingConvertedDocRecords[${idx}].keywords = normalizeKeywordList(this.value, { appendTitle: false })"
+              <input type="text" value="${(Array.isArray(r.keywords) ? r.keywords.join(', ') : '').replace(/"/g, '&quot;')}"
+                     onchange="pendingConvertedDocRecords[${idx}].keywords = this.value.split(/[,，、]+/).map(s=>s.trim()).filter(Boolean)"
                      class="w-full border border-slate-300 rounded px-2 py-1 text-xs">
             </div>
           </div>
@@ -4757,7 +4570,8 @@ ${stepsText}
         const isAdmin = currentUser && currentUser.role === 'admin';
         const nowStr = new Date().toISOString().slice(0, 10);
         const rowsToUpsert = pendingConvertedDocRecords.map(r => {
-          const kws = normalizeKeywordList(r.keywords, { title: r.title, sopId: r.sop_id });
+          const kws = Array.isArray(r.keywords) ? [...r.keywords] : [];
+          if (r.title && !kws.includes(r.title)) kws.push(r.title);
           return {
             sop_id: r.sop_id,
             category: r.category || '匯入文件-操作指引',
@@ -4785,12 +4599,12 @@ ${stepsText}
 
         if (error) throw error;
 
-        showToast(`🎉 已成功將 ${rowsToUpsert.length} 筆轉換後的 SOP 寫入知識庫！${isAdmin ? '' : '（狀態：草稿待審，已可於工程師查詢庫檢索操作）'}`);
+        alert(`🎉 已成功將 ${rowsToUpsert.length} 筆轉換後的 SOP 寫入知識庫！${isAdmin ? '' : '（狀態：草稿待審，已可於工程師查詢庫檢索操作）'}`);
         window.closeDocConvertPreviewModal();
         await window.fetchKbFromSupabase();
         renderEngineerSopCatalog();
       } catch (err) {
-        showToast('❌ 寫入知識庫失敗：' + err.message);
+        alert('❌ 寫入知識庫失敗：' + err.message);
       } finally {
         if (btn) {
           btn.innerText = '✅ 確認寫入知識庫';
@@ -4801,7 +4615,7 @@ ${stepsText}
 
     window.handleSmartKbUpload = async function(event) {
       if (!supabaseClient) {
-        showToast("資料庫連線尚未就緒，請重新整理頁面後再試。");
+        alert("資料庫連線尚未就緒，請重新整理頁面後再試。");
         return;
       }
 
@@ -4831,7 +4645,7 @@ ${stepsText}
               text = await extractTextFromDocOrPptFile(f, ext);
             }
             if (!text || text.trim().length < 15) {
-              showToast(`⚠️ 檔案「${f.name}」未能萃取出足夠文字（若為純掃描圖片型 PDF，建議先轉文字 PDF 或以拍照上傳辨識）。`);
+              alert(`⚠️ 檔案「${f.name}」未能萃取出足夠文字（若為純掃描圖片型 PDF，建議先轉文字 PDF 或以拍照上傳辨識）。`);
               continue;
             }
             const recs = await convertDocumentToSopRecords(f, text);
@@ -4870,12 +4684,12 @@ ${stepsText}
               }
             }
           } else {
-            showToast(`不支援的檔案格式：${file.name}（支援 .pdf, .doc, .docx, .ppt, .pptx, .xlsx, .xls, .json）`);
+            alert(`不支援的檔案格式：${file.name}（支援 .pdf, .doc, .docx, .ppt, .pptx, .xlsx, .xls, .json）`);
             continue;
           }
 
           if (!rawRecords || rawRecords.length === 0) {
-            showToast(`❌ 檔案「${file.name}」內查無有效資料！`);
+            alert(`❌ 檔案「${file.name}」內查無有效資料！`);
             continue;
           }
 
@@ -4910,10 +4724,18 @@ ${stepsText}
             const subCat = getVal(r, ['子類', 'sub_category']) || '';
             const category = getVal(r, ['category']) || (mainCat ? (subCat ? `${mainCat}-${subCat}` : mainCat) : '一般分類');
 
-            // 關鍵字欄位可能是：真正的陣列（JSON 匯入）、JSON 陣列字串（Excel 儲存格）、
-            // Postgres 陣列字串，或以 , ， 、 ; 換行 分隔的文字；統一交由 normalizeKeywordList 處理
-            const kwRaw = getVal(r, ['keywords', '檢索關鍵字陣列', '使用者常見說法(檢索關鍵字)', '關鍵字']);
-            const keywords = normalizeKeywordList(kwRaw, { title, sopId });
+            let keywords = [];
+            const kwArr = getVal(r, ['keywords', '檢索關鍵字陣列']);
+            const kwStr = getVal(r, ['使用者常見說法(檢索關鍵字)', '關鍵字', 'keywords']);
+
+            if (Array.isArray(kwArr) && kwArr.length > 0) {
+              keywords = kwArr.map(s => String(s).trim()).filter(Boolean);
+            } else if (typeof kwStr === 'string' && kwStr.trim()) {
+              keywords = kwStr.split(/[,，、/ \t\n]+/).map(s => s.trim()).filter(Boolean);
+            } else {
+              keywords = [title];
+            }
+            if (title && !keywords.includes(title)) keywords.push(title);
 
             const prebuiltSafeSteps = getVal(r, ['safe_steps']);
             const steps = getVal(r, ['處理步驟/解答', 'raw_steps', 'steps']) || '';
@@ -4957,7 +4779,7 @@ ${stepsText}
           }
 
           if (payload.length === 0) {
-            showToast(`❌ 檔案「${file.name}」未能轉換任何有效資料！`);
+            alert(`❌ 檔案「${file.name}」未能轉換任何有效資料！`);
             continue;
           }
 
@@ -4977,14 +4799,14 @@ ${stepsText}
             successCount += chunk.length;
           }
 
-          showToast(`🎉 恭喜！已成功將 ${successCount} 筆知識庫寫入 Supabase！`);
+          alert(`🎉 恭喜！已成功將 ${successCount} 筆知識庫寫入 Supabase！`);
           await window.fetchKbFromSupabase();
           renderEngineerSopCatalog();
         }
       } catch (err) {
         if (progressBanner) progressBanner.classList.add('hidden');
         console.error("批次匯入失敗:", err);
-        showToast("❌ 匯入失敗，原因：" + (err.message || "請檢查檔案內容或網路狀態"));
+        alert("❌ 匯入失敗，原因：" + (err.message || "請檢查檔案內容或網路狀態"));
       } finally {
         event.target.value = '';
       }
@@ -5243,7 +5065,7 @@ ${stepsText}
       const sopId = prompt(`請輸入要將問法「${userQuery}」收錄至哪一個 SOP 編號 (例如：M-163 或 PC-001)：`);
       if (!sopId) return;
       await autoLearnNewKeywordToSupabase(sopId.trim().toUpperCase(), userQuery);
-      showToast(`已成功將「${userQuery}」增補進 [${sopId.toUpperCase()}] 的關鍵字庫中！`);
+      alert(`已成功將「${userQuery}」增補進 [${sopId.toUpperCase()}] 的關鍵字庫中！`);
       window.fetchKbFromSupabase();
     };
 
@@ -5319,7 +5141,7 @@ ${stepsText}
         turnCount++;
         window.updateTurnUI();
 
-        window.updateXiaoweiMood('thinking', '「收到照片！小威正在分析問題並整理排查步驟...」');
+        window.updateXiaoweiMood('thinking', '「收到照片！小威正直接透過 Groq 分析問題並整理排查步驟...」');
 
         const result = await analyzeImageDirectlyWithGroq(compressedBase64, inquiryContext.originalProblem);
 
@@ -5349,13 +5171,13 @@ ${stepsText}
         }
 
         // 免輸入文字：直接將 Groq 分析出的排查步驟交由小威逐條引導
-        const steps = sanitizeAiStepsForRole((result && result.stepsText)
+        const steps = (result && result.stepsText)
           ? parseGroqGeneratedSteps(result.stepsText)
           : [
               "先確認畫面上的錯誤訊息或停止代碼，並檢查相關設備電源與網路／連線是否正常。",
               "嘗試重新啟動相關應用程式或設備，觀察是否恢復正常或出現相同提示。",
               "若測試後仍無法排除，請直接點擊下方「直接報修」，系統會將照片與排查紀錄一併帶入。"
-            ]);
+            ];
 
         const unrecLabel = '圖片辨識未成功，以下是一般建議';
         inquiryContext.visionDiagnosisText = `已附現場照片（${unrecLabel}）`;
@@ -6091,14 +5913,14 @@ ${stepsText}
             .insert([newNtf])
             .select();
           if (insErr) {
-            showToast("❌ 新增通報事件失敗（已保留表單內容，請稍後重試）：" + insErr.message);
+            alert("❌ 新增通報事件失敗（已保留表單內容，請稍後重試）：" + insErr.message);
             return;
           }
           if (Array.isArray(insData) && insData[0]) {
             Object.assign(newNtf, insData[0]);
           }
         } catch (err) {
-          showToast("❌ 新增通報事件失敗（已保留表單內容，請稍後重試）：" + (err?.message || err));
+          alert("❌ 新增通報事件失敗（已保留表單內容，請稍後重試）：" + (err?.message || err));
           return;
         }
       }
@@ -6198,12 +6020,12 @@ ${stepsText}
           }], { onConflict: 'tenant_id,group_key' });
           if (upErr) {
             sageConfirmedIds.delete(groupId);
-            showToast("❌ 審核寫入失敗，已保留待審核狀態供重試：" + upErr.message);
+            alert("❌ 審核寫入失敗，已保留待審核狀態供重試：" + upErr.message);
             return;
           }
         } catch (err) {
           sageConfirmedIds.delete(groupId);
-          showToast("❌ 審核寫入失敗，已保留待審核狀態供重試：" + err.message);
+          alert("❌ 審核寫入失敗，已保留待審核狀態供重試：" + err.message);
           return;
         }
       }
@@ -6591,7 +6413,7 @@ ${stepsText}
         }
         window.closeSageMailModal();
       } catch (err) {
-        showToast("寄送事件通知信失敗：" + err.message);
+        alert("寄送事件通知信失敗：" + err.message);
       } finally {
         if (btn) {
           btn.innerText = "📤 寄出事件通知信";
@@ -6686,7 +6508,7 @@ ${stepsText}
               closed_at: rcaPayload.closed_at
             }], { onConflict: 'tenant_id,group_key' });
           if (rcaErr) {
-            showToast('❌ RCA 寫入失敗，請稍後重試：' + rcaErr.message);
+            alert('❌ RCA 寫入失敗，請稍後重試：' + rcaErr.message);
             return;
           }
         }
