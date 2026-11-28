@@ -1474,7 +1474,7 @@
 
     // 前端不存放任何 Groq API Key，統一經由 Supabase Edge Function (GROQ_API_KEY 伺服器端 Secret) 呼叫
 
-    async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+    async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
